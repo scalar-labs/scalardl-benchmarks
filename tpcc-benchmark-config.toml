@@ -1,0 +1,43 @@
+[modules]
+[modules.preprocessor]
+name = "com.scalar.dl.benchmarks.tpcc.TpccLoader"
+path = "./build/libs/scalardl-benchmarks-all.jar"
+[modules.processor]
+name = "com.scalar.dl.benchmarks.tpcc.TpccBench"
+path = "./build/libs/scalardl-benchmarks-all.jar"
+[modules.postprocessor]
+name = "com.scalar.dl.benchmarks.tpcc.TpccReporter"
+path = "./build/libs/scalardl-benchmarks-all.jar"
+
+[common]
+concurrency = 4
+run_for_sec = 60
+ramp_for_sec = 10
+
+[stats]
+realtime_report_enabled = true
+
+[tpcc_config]
+num_warehouses = 1
+#rate_payment = 50
+#load_concurrency = 32
+
+#[contract]
+#table_loader_id = "table-loader"
+#table_loader_name = "com.scalar.dl.benchmarks.tpcc.contract.TableLoader"
+#table_loader_path = "./build/classes/java/main/com/scalar/dl/benchmarks/tpcc/contract/TableLoader.class"
+#new_order_id = "new-order"
+#new_order_name = "com.scalar.dl.benchmarks.tpcc.contract.NewOrder"
+#new_order_path = "./build/classes/java/main/com/scalar/dl/benchmarks/tpcc/contract/NewOrder.class"
+#payment_id = "payment"
+#payement_name = "com.scalar.dl.benchmarks.tpcc.contract.Payement"
+#payment_path = "./build/classes/java/main/com/scalar/dl/benchmarks/tpcc/contract/Payment.class"
+
+[client_config]
+ledger_host = "localhost"
+auditor_host = "localhost"
+auditor_enabled = "true"
+cert_holder_id = "test_holder"
+certificate = "/path/to/client.pem"
+private_key = "/path/to/client-key.pem"
+#config_file = "/path/to/client.properties"
