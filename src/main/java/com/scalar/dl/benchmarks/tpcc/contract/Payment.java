@@ -29,7 +29,7 @@ public class Payment extends JacksonBasedContract {
     // Get and update warehouse
     String warehouseKey = createWarehouseKey(warehouseId);
     Optional<Asset<JsonNode>> warehouse = ledger.get(warehouseKey);
-    if (warehouse.isEmpty()) {
+    if (!warehouse.isPresent()) {
       throw new ContractContextException(Message.ERR_ASSET_NOT_FOUND);
     }
     JsonNode oldWarehouseNode = warehouse.get().data();
@@ -43,7 +43,7 @@ public class Payment extends JacksonBasedContract {
     // Get and update district
     String districtKey = createDistrictKey(warehouseId, districtId);
     Optional<Asset<JsonNode>> district = ledger.get(districtKey);
-    if (district.isEmpty()) {
+    if (!district.isPresent()) {
       throw new ContractContextException(Message.ERR_ASSET_NOT_FOUND);
     }
     JsonNode oldDistrictNode = district.get().data();
@@ -59,7 +59,7 @@ public class Payment extends JacksonBasedContract {
       String key =
           createCustomerSecondaryKey(customerWarehouseId, customerDistrictId, customerLastName);
       Optional<Asset<JsonNode>> customerSecondary = ledger.get(key);
-      if (customerSecondary.isEmpty()) {
+      if (!customerSecondary.isPresent()) {
         throw new ContractContextException(Message.ERR_ASSET_NOT_FOUND);
       }
       JsonNode indexDataNode = customerSecondary.get().data();
@@ -71,7 +71,7 @@ public class Payment extends JacksonBasedContract {
     }
     String customerKey = createCustomerKey(customerWarehouseId, customerDistrictId, customerId);
     Optional<Asset<JsonNode>> customer = ledger.get(customerKey);
-    if (customer.isEmpty()) {
+    if (!customer.isPresent()) {
       throw new ContractContextException(Message.ERR_ASSET_NOT_FOUND);
     }
     JsonNode oldCustomerNode = customer.get().data();
