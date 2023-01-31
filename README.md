@@ -20,7 +20,8 @@ The benchmark uses Kelpie, which is a simple yet general framework for performin
 
 This benchmark requires the followings:
 - A client to execute this benchmark
-- A target Ledger server and an Auditor server (optional)
+- A target Ledger server
+- A target Auditor server (optional)
 
 Set up the above components and then properly configure Client, Ledger and Auditor properties by following the getting-started guides. Note that you do not need to download Client SDK and manually register your certificate. As described later, this benchmark suite will automatically register the required certificate and contracts.
 
@@ -82,4 +83,4 @@ Set up the above components and then properly configure Client, Ledger and Audit
 |:-------------------|:------------------------------------------------------|:--------|
 | `num_warehouses`   | Number of warehouses (scale factor) for benchmarking. | 1       |
 | `rate_payment`     | Percentage of payment transaction.                    | 50      |
-| `load_concurrency` | Number of threads for loading.                        | 0       |
+| `load_concurrency` | Number of threads for loading.                        | 1       |
