@@ -12,7 +12,7 @@ public class YcsbCommon {
   static final String PAYLOAD_SIZE = "payload_size";
   static final String OPS_PER_TX = "ops_per_tx";
   static final String WORKLOAD = "workload";
-  static final long DEFAULT_LOAD_CONCURRENCY = 10;
+  static final long DEFAULT_LOAD_CONCURRENCY = 1;
   static final long DEFAULT_LOAD_BATCH_SIZE = 1;
   static final long DEFAULT_RECORD_COUNT = 1000;
   static final long DEFAULT_PAYLOAD_SIZE = 1000;

@@ -38,7 +38,6 @@ public class YcsbBench extends TimeBasedProcessor {
     contractIdMap.put("A", YcsbCommon.getWorkloadAContractId(config));
     contractIdMap.put("C", YcsbCommon.getWorkloadCContractId(config));
     contractIdMap.put("F", YcsbCommon.getWorkloadFContractId(config));
-    System.out.println(this.recordCount);
   }
 
   @Override
