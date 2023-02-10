@@ -9,8 +9,14 @@ import java.util.concurrent.ThreadLocalRandom;
 public class YcsbQuery {
   private static final ObjectMapper MAPPER = new ObjectMapper();
 
-  public static class A {
-    public static ObjectNode generate(int recordCount, int opsPerTx, int payloadSize) {
+  enum Type {
+    A,
+    C,
+    F,
+  }
+
+  static class A {
+    static ObjectNode generate(int recordCount, int opsPerTx, int payloadSize) {
       char[] payload = new char[payloadSize];
       ObjectNode node = MAPPER.createObjectNode();
       ArrayNode userIdsNode = MAPPER.createArrayNode();
@@ -30,8 +36,8 @@ public class YcsbQuery {
     }
   }
 
-  public static class C {
-    public static ObjectNode generate(int recordCount, int opsPerTx) {
+  static class C {
+    static ObjectNode generate(int recordCount, int opsPerTx) {
       ObjectNode node = MAPPER.createObjectNode();
       ArrayNode userIdsNode = MAPPER.createArrayNode();
       for (int i = 0; i < opsPerTx; ++i) {
@@ -42,8 +48,8 @@ public class YcsbQuery {
     }
   }
 
-  public static class F {
-    public static ObjectNode generate(int recordCount, int opsPerTx, int payloadSize) {
+  static class F {
+    static ObjectNode generate(int recordCount, int opsPerTx, int payloadSize) {
       char[] payload = new char[payloadSize];
       ObjectNode node = MAPPER.createObjectNode();
       ArrayNode userIdsNode = MAPPER.createArrayNode();

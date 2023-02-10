@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 public class YcsbLoader extends PreProcessor {
-  private static final ObjectMapper MAPPER = new ObjectMapper();
-  private static final AtomicInteger COUNTER = new AtomicInteger(0);
+  private static final ObjectMapper mapper = new ObjectMapper();
+  private static final AtomicInteger counter = new AtomicInteger(0);
   private final ClientServiceFactory factory;
   private final ClientService service;
   private final int concurrency;
@@ -109,8 +109,8 @@ public class YcsbLoader extends PreProcessor {
     CompletableFuture<Void> monitor =
         CompletableFuture.runAsync(
             () -> {
-              while (!shutdown.get() && COUNTER.get() < recordCount) {
-                int completionRate = COUNTER.get() * 100 / recordCount;
+              while (!shutdown.get() && counter.get() < recordCount) {
+                int completionRate = counter.get() * 100 / recordCount;
                 logInfo(completionRate + "% records have been inserted");
                 Uninterruptibles.sleepUninterruptibly(1000, TimeUnit.MILLISECONDS);
               }
@@ -145,9 +145,9 @@ public class YcsbLoader extends PreProcessor {
     }
 
     private void populateWithTx(int startId, int endId) {
-      ObjectNode argument = MAPPER.createObjectNode();
-      ArrayNode userIds = MAPPER.createArrayNode();
-      ArrayNode payloads = MAPPER.createArrayNode();
+      ObjectNode argument = mapper.createObjectNode();
+      ArrayNode userIds = mapper.createArrayNode();
+      ArrayNode payloads = mapper.createArrayNode();
       for (int i = startId; i < endId; ++i) {
         YcsbCommon.randomFastChars(ThreadLocalRandom.current(), payload);
         userIds.add(i);
@@ -166,7 +166,7 @@ public class YcsbLoader extends PreProcessor {
           }
         }
       }
-      COUNTER.getAndAdd(endId - startId);
+      counter.getAndAdd(endId - startId);
     }
   }
 }

@@ -4,6 +4,7 @@ import static com.scalar.dl.benchmarks.Common.getClientConfig;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.scalar.dl.benchmarks.ycsb.YcsbQuery.Type;
 import com.scalar.dl.client.config.ClientConfig;
 import com.scalar.dl.client.exception.ClientException;
 import com.scalar.dl.client.service.ClientService;
@@ -21,10 +22,10 @@ public class YcsbBench extends TimeBasedProcessor {
   private final ClientServiceFactory factory;
   private final ClientService service;
   private final int recordCount;
-  private final String workload;
+  private final YcsbQuery.Type workload;
   private final int opsPerTx;
   private final int payloadSize;
-  private final Map<String, String> contractIdMap = new HashMap<>();
+  private final Map<YcsbQuery.Type, String> contractIdMap = new HashMap<>();
 
   public YcsbBench(Config config) {
     super(config);
@@ -32,20 +33,20 @@ public class YcsbBench extends TimeBasedProcessor {
     this.factory = new ClientServiceFactory();
     this.service = factory.create(clientConfig);
     this.recordCount = YcsbCommon.getRecordCount(config);
-    this.workload = YcsbCommon.getWorkload(config); // "A", "C" or "F"
+    this.workload = YcsbQuery.Type.valueOf(YcsbCommon.getWorkload(config)); // "A", "C" or "F"
     this.opsPerTx = YcsbCommon.getOpsPerTx(config);
     this.payloadSize = YcsbCommon.getPayloadSize(config);
-    contractIdMap.put("A", YcsbCommon.getWorkloadAContractId(config));
-    contractIdMap.put("C", YcsbCommon.getWorkloadCContractId(config));
-    contractIdMap.put("F", YcsbCommon.getWorkloadFContractId(config));
+    contractIdMap.put(Type.A, YcsbCommon.getWorkloadAContractId(config));
+    contractIdMap.put(Type.C, YcsbCommon.getWorkloadCContractId(config));
+    contractIdMap.put(Type.F, YcsbCommon.getWorkloadFContractId(config));
   }
 
   @Override
   public void executeEach() {
-    JsonNode argument = generateArgument(contractIdMap.get(workload));
+    JsonNode argument = generateArgument(workload);
     while (true) {
       try {
-        service.executeContract(workload, argument);
+        service.executeContract(contractIdMap.get(workload), argument);
         break;
       } catch (ClientException e) {
         if (e.getStatusCode() == StatusCode.CONFLICT) {
@@ -63,13 +64,13 @@ public class YcsbBench extends TimeBasedProcessor {
     factory.close();
   }
 
-  private ObjectNode generateArgument(String workload) {
+  private ObjectNode generateArgument(YcsbQuery.Type workload) {
     switch (workload) {
-      case "A":
+      case A:
         return YcsbQuery.A.generate(recordCount, opsPerTx, payloadSize);
-      case "C":
+      case C:
         return YcsbQuery.C.generate(recordCount, opsPerTx);
-      case "F":
+      case F:
         return YcsbQuery.F.generate(recordCount, opsPerTx, payloadSize);
       default:
         return null;
