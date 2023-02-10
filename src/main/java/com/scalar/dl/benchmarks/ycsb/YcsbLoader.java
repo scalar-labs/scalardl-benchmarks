@@ -27,8 +27,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
 public class YcsbLoader extends PreProcessor {
-  private static final ObjectMapper mapper = new ObjectMapper();
-  private static final AtomicInteger counter = new AtomicInteger(0);
+  private final ObjectMapper mapper = new ObjectMapper();
+  private final AtomicInteger counter = new AtomicInteger(0);
   private final ClientServiceFactory factory;
   private final ClientService service;
   private final int concurrency;
