@@ -5,6 +5,7 @@ This repository contains benchmark programs for ScalarDL.
 ## Available workloads
 
 - TPC-C (New-Order and Payment transactions only)
+- YCSB (Workload A, C and F)
 
 ## Prerequisites
 
@@ -84,3 +85,14 @@ Set up the above components and then properly configure Client, Ledger and Audit
 | `num_warehouses`   | Number of warehouses (scale factor) for benchmarking. | 1       |
 | `rate_payment`     | Percentage of payment transaction.                    | 50      |
 | `load_concurrency` | Number of threads for loading.                        | 1       |
+
+### YCSB
+
+| name               | description                                        | default |
+|:-------------------|:---------------------------------------------------|:--------|
+| `record_count`     | Number of records for benchmarking.                | 1000    |
+| `payload_size`     | Payload size (in bytes) of each record.            | 1000    |
+| `ops_per_tx`       | Number of operations in a single transaction       | 2       |
+| `workload`         | Workload type (A, C or F).                         | A       |
+| `load_concurrency` | Number of threads for loading.                     | 1       |
+| `load_batch_size`  | Number of records in a single loading transaction. | 1       |
