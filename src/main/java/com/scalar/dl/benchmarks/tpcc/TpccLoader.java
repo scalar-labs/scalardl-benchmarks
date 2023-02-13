@@ -55,7 +55,7 @@ public class TpccLoader extends PreProcessor {
   private static final long DEFAULT_START_WAREHOUSE = 1;
   private static final boolean DEFAULT_SKIP_ITEM_LOAD = false;
   private static final int QUEUE_SIZE = 10000;
-  private static final ObjectMapper MAPPER = new ObjectMapper();
+  private final ObjectMapper mapper = new ObjectMapper();
   private final ClientServiceFactory factory;
   private final ClientService service;
   private final String loaderContractId;
@@ -305,9 +305,9 @@ public class TpccLoader extends PreProcessor {
     }
   }
 
-  private static ObjectNode buildCustomerJson(
+  private ObjectNode buildCustomerJson(
       int warehouseId, int districtId, int customerId, LocalDateTime date) {
-    ObjectNode node = MAPPER.createObjectNode();
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Customer.NAME);
     node.put(Table.Customer.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.Customer.KEY_DISTRICT_ID, districtId);
@@ -341,27 +341,27 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildCustomerSecondaryJson(
+  private ObjectNode buildCustomerSecondaryJson(
       int warehouseId,
       int districtId,
       String lastName,
       Collection<Entry<Integer, String>> entries) {
-    ObjectNode node = MAPPER.createObjectNode();
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.CustomerSecondary.NAME);
     node.put(Table.CustomerSecondary.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.CustomerSecondary.KEY_DISTRICT_ID, districtId);
     node.put(Table.CustomerSecondary.KEY_LAST, lastName);
-    ArrayNode keyCustomerIdList = MAPPER.createArrayNode();
+    ArrayNode keyCustomerIdList = mapper.createArrayNode();
     entries.forEach(
         entry ->
             keyCustomerIdList.add(
-                MAPPER.createArrayNode().add(entry.getKey()).add(entry.getValue())));
+                mapper.createArrayNode().add(entry.getKey()).add(entry.getValue())));
     node.set(Table.CustomerSecondary.KEY_CUSTOMER_ID_LIST, keyCustomerIdList);
     return node;
   }
 
-  private static ObjectNode buildDistrictJson(int warehouseId, int districtId) {
-    ObjectNode node = MAPPER.createObjectNode();
+  private ObjectNode buildDistrictJson(int warehouseId, int districtId) {
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.District.NAME);
     node.put(Table.District.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.District.KEY_DISTRICT_ID, districtId);
@@ -375,14 +375,14 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildHistoryJson(
+  private ObjectNode buildHistoryJson(
       int customerId,
       int customerDistrictId,
       int customerWarehouseId,
       int districtId,
       int warehouseId,
       LocalDateTime date) {
-    ObjectNode node = MAPPER.createObjectNode();
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.History.NAME);
     node.put(Table.History.KEY_CUSTOMER_ID, customerId);
     node.put(Table.History.KEY_CUSTOMER_DID, customerDistrictId);
@@ -397,8 +397,8 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildItemJson(int itemId) {
-    ObjectNode node = MAPPER.createObjectNode();
+  private ObjectNode buildItemJson(int itemId) {
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Item.NAME);
     node.put(Table.Item.KEY_ITEM_ID, itemId);
     node.put(
@@ -412,8 +412,8 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildNewOrderJson(int warehouseId, int districtId, int orderId) {
-    ObjectNode node = MAPPER.createObjectNode();
+  private ObjectNode buildNewOrderJson(int warehouseId, int districtId, int orderId) {
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.NewOrder.NAME);
     node.put(Table.NewOrder.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.NewOrder.KEY_DISTRICT_ID, districtId);
@@ -421,9 +421,9 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildOrderJson(
+  private ObjectNode buildOrderJson(
       int warehouseId, int districtId, int orderId, int customerId, LocalDateTime date) {
-    ObjectNode node = MAPPER.createObjectNode();
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Order.NAME);
     node.put(Table.Order.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.Order.KEY_DISTRICT_ID, districtId);
@@ -442,7 +442,7 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildOrderLineJson(
+  private ObjectNode buildOrderLineJson(
       int warehouseId,
       int districtId,
       int orderId,
@@ -450,7 +450,7 @@ public class TpccLoader extends PreProcessor {
       int supplyWarehouseId,
       int itemId,
       LocalDateTime date) {
-    ObjectNode node = MAPPER.createObjectNode();
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.OrderLine.NAME);
     node.put(Table.OrderLine.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.OrderLine.KEY_DISTRICT_ID, districtId);
@@ -472,8 +472,8 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildStockJson(int warehouseId, int itemId) {
-    ObjectNode node = MAPPER.createObjectNode();
+  private ObjectNode buildStockJson(int warehouseId, int itemId) {
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Stock.NAME);
     node.put(Table.Stock.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.Stock.KEY_ITEM_ID, itemId);
@@ -488,8 +488,8 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static ObjectNode buildWarehouseJson(int warehouseId) {
-    ObjectNode node = MAPPER.createObjectNode();
+  private ObjectNode buildWarehouseJson(int warehouseId) {
+    ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Warehouse.NAME);
     node.put(Table.Warehouse.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.Warehouse.KEY_YTD, 300000.00);
@@ -501,7 +501,7 @@ public class TpccLoader extends PreProcessor {
     return node;
   }
 
-  private static void putAddress(ObjectNode node, String prefix) {
+  private void putAddress(ObjectNode node, String prefix) {
     node.put(
         prefix + Table.Address.KEY_STREET_1,
         TpccCommon.randomAlphaString(Table.Address.MIN_STREET, Table.Address.MAX_STREET));

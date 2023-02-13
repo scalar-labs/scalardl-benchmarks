@@ -144,7 +144,7 @@ public class NewOrder extends JacksonBasedContract {
   }
 
   private String createItemKey(int itemId) {
-    return String.format("%02d", Table.Code.ITEM) + String.format("%010d", itemId);
+    return String.format("%02d", Table.Code.ITEM) + String.format("%06d", itemId);
   }
 
   private String createNewOrderKey(int warehouseId, int districtId, int orderId) {
@@ -173,7 +173,7 @@ public class NewOrder extends JacksonBasedContract {
   private String createStockKey(int warehouseId, int itemId) {
     return String.format("%02d", Table.Code.STOCK)
         + String.format("%05d", warehouseId)
-        + String.format("%03d", itemId);
+        + String.format("%06d", itemId);
   }
 
   private String createWarehouseKey(int warehouseId) {

@@ -1,7 +1,9 @@
 package com.scalar.dl.benchmarks.tpcc.contract;
 
-public class Table {
+public final class Table {
   public static final String KEY_TABLE_NAME = "table_name";
+
+  private Table() {}
 
   // Use public static final int since enum cannot be used in contract.
   public static class Code {

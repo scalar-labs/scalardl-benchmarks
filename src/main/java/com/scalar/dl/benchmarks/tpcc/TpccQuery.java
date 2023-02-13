@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.scalar.dl.benchmarks.tpcc.contract.Table;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.UUID;
 
 public class TpccQuery {
   private static final ObjectMapper MAPPER = new ObjectMapper();
@@ -18,7 +19,7 @@ public class TpccQuery {
 
   public static class NewOrder {
 
-    public static String generate(String nonce, int numWarehouse) {
+    public static String generate(int numWarehouse) {
       int warehouseId = TpccCommon.randomInt(1, numWarehouse);
       int districtId = TpccCommon.randomInt(1, Table.Warehouse.DISTRICTS);
       int customerId = TpccCommon.getCustomerId();
@@ -72,7 +73,7 @@ public class TpccQuery {
 
   public static class Payment {
 
-    public static String generate(String nonce, int numWarehouse) {
+    public static String generate(int numWarehouse) {
       int warehouseId = TpccCommon.randomInt(1, numWarehouse);
       int districtId = TpccCommon.randomInt(1, Table.Warehouse.DISTRICTS);
       int customerId = 0;
@@ -124,7 +125,7 @@ public class TpccQuery {
         node.put(Table.Customer.KEY_CUSTOMER_ID, customerId);
       }
       node.put(Table.QueryParam.KEY_DATE, date.format(TpccCommon.FORMATTER));
-      node.put(Table.QueryParam.KEY_NONCE, nonce);
+      node.put(Table.QueryParam.KEY_NONCE, UUID.randomUUID().toString());
       return node.toString();
     }
   }
