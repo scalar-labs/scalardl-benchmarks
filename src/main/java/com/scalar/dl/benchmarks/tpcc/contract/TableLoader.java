@@ -92,7 +92,7 @@ public class TableLoader extends JacksonBasedContract {
 
   private String createItemKey(JsonNode argument) {
     int itemId = argument.get(Table.Item.KEY_ITEM_ID).asInt();
-    return String.format("%02d", Table.Code.ITEM) + String.format("%010d", itemId);
+    return String.format("%02d", Table.Code.ITEM) + String.format("%06d", itemId);
   }
 
   private String createNewOrderKey(JsonNode argument) {
@@ -132,7 +132,7 @@ public class TableLoader extends JacksonBasedContract {
     int itemId = argument.get(Table.Stock.KEY_ITEM_ID).asInt();
     return String.format("%02d", Table.Code.STOCK)
         + String.format("%05d", warehouseId)
-        + String.format("%03d", itemId);
+        + String.format("%06d", itemId);
   }
 
   private String createWarehouseKey(JsonNode argument) {

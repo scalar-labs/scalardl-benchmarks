@@ -17,7 +17,6 @@ import com.scalar.kelpie.config.Config;
 import com.scalar.kelpie.modules.TimeBasedProcessor;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import javax.json.Json;
 
@@ -45,12 +44,11 @@ public class TpccBench extends TimeBasedProcessor {
 
   @Override
   public void executeEach() {
-    String nonce = UUID.randomUUID().toString();
     TpccQuery.Type type = decideType();
-    String jsonArgument = generateArgument(nonce, type);
+    String jsonArgument = generateArgument(type);
     while (true) {
       try {
-        service.executeContract(nonce, contractIdMap.get(type), jsonArgument);
+        service.executeContract(contractIdMap.get(type), jsonArgument);
         break;
       } catch (ClientException e) {
         if (e.getStatusCode() == StatusCode.CONFLICT) {
@@ -77,12 +75,12 @@ public class TpccBench extends TimeBasedProcessor {
     }
   }
 
-  private String generateArgument(String nonce, TpccQuery.Type type) {
+  private String generateArgument(TpccQuery.Type type) {
     switch (type) {
       case Payment:
-        return TpccQuery.Payment.generate(nonce, numWarehouse);
+        return TpccQuery.Payment.generate(numWarehouse);
       case NewOrder:
-        return TpccQuery.NewOrder.generate(nonce, numWarehouse);
+        return TpccQuery.NewOrder.generate(numWarehouse);
       default:
         return "";
     }
