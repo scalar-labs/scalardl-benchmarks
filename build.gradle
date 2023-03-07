@@ -16,7 +16,9 @@ dependencies {
 
 shadowJar {
     mergeServiceFiles()
+    exclude 'com/scalar/dl/benchmarks/smallbank/contract/*'
     exclude 'com/scalar/dl/benchmarks/tpcc/contract/*'
+    exclude 'com/scalar/dl/benchmarks/ycsb/contract/*'
 }
 
 sourceCompatibility = 1.8

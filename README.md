@@ -4,6 +4,7 @@ This repository contains benchmark programs for ScalarDL.
 
 ## Available workloads
 
+- SmallBank
 - TPC-C (New-Order and Payment transactions only)
 - YCSB (Workload A, C and F)
 
@@ -77,6 +78,14 @@ Set up the above components and then properly configure Client, Ledger and Audit
 | `ramp_for_sec` | Duration of ramp up time before benchmark (in seconds). | 0       |
 
 ## Workload-specific parameters
+
+### SmallBank
+
+| name               | description                                         | default |
+|:-------------------|:----------------------------------------------------|:--------|
+| `num_accounts`     | Number of bank accounts for benchmarking.           | 100000  |
+| `load_concurrency` | Number of threads for loading.                      | 1       |
+| `load_batch_size`  | Number of accounts in a single loading transaction. | 1       |
 
 ### TPC-C
 
