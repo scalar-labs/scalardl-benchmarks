@@ -1,12 +1,12 @@
 [modules]
 [modules.preprocessor]
-name = "com.scalar.dl.benchmarks.ycsb.YcsbLoader"
+name = "com.scalar.dl.benchmarks.smallbank.SmallBankLoader"
 path = "./build/libs/scalardl-benchmarks-all.jar"
 [modules.processor]
-name = "com.scalar.dl.benchmarks.ycsb.YcsbBench"
+name = "com.scalar.dl.benchmarks.smallbank.SmallBankBench"
 path = "./build/libs/scalardl-benchmarks-all.jar"
 [modules.postprocessor]
-name = "com.scalar.dl.benchmarks.ycsb.YcsbReporter"
+name = "com.scalar.dl.benchmarks.smallbank.SmallBankReporter"
 path = "./build/libs/scalardl-benchmarks-all.jar"
 
 [common]
@@ -17,11 +17,8 @@ ramp_for_sec = 10
 [stats]
 realtime_report_enabled = true
 
-[ycsb_config]
-record_count = 100000
-payload_size = 100
-ops_per_tx = 2
-workload = "A" # A, C or F are supported
+[smallbank_config]
+num_accounts = 100000
 load_concurrency = 4
 load_batch_size = 1
 
