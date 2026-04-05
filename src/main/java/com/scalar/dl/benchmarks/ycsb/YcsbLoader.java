@@ -83,7 +83,7 @@ public class YcsbLoader extends PreProcessor {
   }
 
   private void registerCertificateAndContracts() {
-    service.registerCertificate();
+    service.bootstrap();
     service.registerContract(createContractId, createContractName, createContractPath);
     service.registerContract(workloadAContractId, workloadAContractName, workloadAContractPath);
     service.registerContract(workloadCContractId, workloadCContractName, workloadCContractPath);

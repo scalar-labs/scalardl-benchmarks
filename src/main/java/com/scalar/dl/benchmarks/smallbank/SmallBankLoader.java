@@ -99,7 +99,7 @@ public class SmallBankLoader extends PreProcessor {
   }
 
   private void registerCertificateAndContracts() {
-    service.registerCertificate();
+    service.bootstrap();
     service.registerContract(createContractId, createContractName, createContractPath);
     service.registerContract(balanceContractId, balanceContractName, balanceContractPath);
     service.registerContract(savingContractId, savingContractName, savingContractPath);

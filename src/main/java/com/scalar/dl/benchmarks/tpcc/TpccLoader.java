@@ -122,7 +122,7 @@ public class TpccLoader extends PreProcessor {
   }
 
   private void registerCertificateAndContracts() {
-    service.registerCertificate();
+    service.bootstrap();
     service.registerContract(loaderContractId, loaderContractName, loaderContractPath);
     service.registerContract(newOrderContractId, newOrderContractName, newOrderContractPath);
     service.registerContract(paymentContractId, paymentContractName, paymentContractPath);
