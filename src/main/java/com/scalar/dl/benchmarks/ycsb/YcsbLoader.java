@@ -73,7 +73,7 @@ public class YcsbLoader extends PreProcessor {
 
   @Override
   public void execute() {
-    registerCertificateAndContracts();
+    bootstrapAndRegisterContracts();
     loadRecords();
   }
 
@@ -82,7 +82,7 @@ public class YcsbLoader extends PreProcessor {
     factory.close();
   }
 
-  private void registerCertificateAndContracts() {
+  private void bootstrapAndRegisterContracts() {
     service.bootstrap();
     service.registerContract(createContractId, createContractName, createContractPath);
     service.registerContract(workloadAContractId, workloadAContractName, workloadAContractPath);
