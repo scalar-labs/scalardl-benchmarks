@@ -112,7 +112,7 @@ public class TpccLoader extends PreProcessor {
 
   @Override
   public void execute() {
-    registerCertificateAndContracts();
+    bootstrapAndRegisterContracts();
     loadRecords();
   }
 
@@ -121,8 +121,8 @@ public class TpccLoader extends PreProcessor {
     factory.close();
   }
 
-  private void registerCertificateAndContracts() {
-    service.registerCertificate();
+  private void bootstrapAndRegisterContracts() {
+    service.bootstrap();
     service.registerContract(loaderContractId, loaderContractName, loaderContractPath);
     service.registerContract(newOrderContractId, newOrderContractName, newOrderContractPath);
     service.registerContract(paymentContractId, paymentContractName, paymentContractPath);

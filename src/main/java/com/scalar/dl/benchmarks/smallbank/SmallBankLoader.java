@@ -89,7 +89,7 @@ public class SmallBankLoader extends PreProcessor {
 
   @Override
   public void execute() {
-    registerCertificateAndContracts();
+    bootstrapAndRegisterContracts();
     loadRecords();
   }
 
@@ -98,8 +98,8 @@ public class SmallBankLoader extends PreProcessor {
     factory.close();
   }
 
-  private void registerCertificateAndContracts() {
-    service.registerCertificate();
+  private void bootstrapAndRegisterContracts() {
+    service.bootstrap();
     service.registerContract(createContractId, createContractName, createContractPath);
     service.registerContract(balanceContractId, balanceContractName, balanceContractPath);
     service.registerContract(savingContractId, savingContractName, savingContractPath);
