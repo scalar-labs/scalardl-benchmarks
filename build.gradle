@@ -15,6 +15,11 @@ dependencies {
 }
 
 shadowJar {
+    manifest {
+        attributes(
+                'Multi-Release': 'true'
+        )
+    }
     zip64 = true
     mergeServiceFiles()
     exclude 'com/scalar/dl/benchmarks/smallbank/contract/*'
