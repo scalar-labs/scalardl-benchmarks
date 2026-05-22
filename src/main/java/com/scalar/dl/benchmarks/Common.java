@@ -58,9 +58,9 @@ public class Common {
     properties.setProperty(ClientConfig.AUDITOR_ENABLED, auditorEnabled);
     properties.setProperty(ClientConfig.AUDITOR_HOST, auditorHost);
     properties.setProperty(ClientConfig.AUDITOR_PORT, auditorPort);
-    properties.setProperty(ClientConfig.CERT_HOLDER_ID, certHolderId);
-    properties.setProperty(ClientConfig.CERT_PATH, certificate);
-    properties.setProperty(ClientConfig.PRIVATE_KEY_PATH, privateKey);
+    properties.setProperty(ClientConfig.ENTITY_ID, certHolderId);
+    properties.setProperty(ClientConfig.DS_CERT_PATH, certificate);
+    properties.setProperty(ClientConfig.DS_PRIVATE_KEY_PATH, privateKey);
 
     ClientConfig clientConfig;
     try {

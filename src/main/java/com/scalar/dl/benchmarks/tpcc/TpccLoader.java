@@ -150,11 +150,10 @@ public class TpccLoader extends PreProcessor {
               }
               while (true) {
                 try {
-                  String nonce = UUID.randomUUID().toString();
                   if (node.get(Table.KEY_TABLE_NAME).asText().equals(History.NAME)) {
-                    node.put(Table.QueryParam.KEY_NONCE, nonce);
+                    node.put(Table.QueryParam.KEY_NONCE, UUID.randomUUID().toString());
                   }
-                  service.executeContract(nonce, loaderContractId, node.toString());
+                  service.executeContract(loaderContractId, node.toString());
                   succeededCounter.incrementAndGet();
                   break;
                 } catch (ClientException e) {
