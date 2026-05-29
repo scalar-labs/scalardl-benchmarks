@@ -16,14 +16,8 @@ dependencies {
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(8)
     }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.release = 8
-    // Gradle still passes -source/-target when release is set; JDK 21+ warns they are obsolete.
-    options.compilerArgs.add('-Xlint:-options')
 }
 
 shadowJar {
