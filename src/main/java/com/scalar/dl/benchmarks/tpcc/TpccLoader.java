@@ -78,7 +78,7 @@ public class TpccLoader extends PreProcessor {
     this.factory = new ClientServiceFactory();
     this.service = factory.create(clientConfig);
     this.concurrency =
-            (int) config.getUserLong(CONFIG_NAME, LOAD_CONCURRENCY, DEFAULT_LOAD_CONCURRENCY);
+        (int) config.getUserLong(CONFIG_NAME, LOAD_CONCURRENCY, DEFAULT_LOAD_CONCURRENCY);
     this.skipItemLoad = config.getUserBoolean(CONFIG_NAME, SKIP_ITEM_LOAD, DEFAULT_SKIP_ITEM_LOAD);
 
     this.loaderContractId = getLoaderContractId(config);
@@ -92,19 +92,19 @@ public class TpccLoader extends PreProcessor {
     this.paymentContractPath = getPaymentContractPath(config);
 
     if (config.hasUserValue(CONFIG_NAME, END_WAREHOUSE)
-            && config.hasUserValue(CONFIG_NAME, NUM_WAREHOUSES)) {
+        && config.hasUserValue(CONFIG_NAME, NUM_WAREHOUSES)) {
       throw new RuntimeException(
-              END_WAREHOUSE + " and " + NUM_WAREHOUSES + " cannot be specified simultaneously");
+          END_WAREHOUSE + " and " + NUM_WAREHOUSES + " cannot be specified simultaneously");
     }
 
     this.startWarehouse =
-            (int) config.getUserLong(CONFIG_NAME, START_WAREHOUSE, DEFAULT_START_WAREHOUSE);
+        (int) config.getUserLong(CONFIG_NAME, START_WAREHOUSE, DEFAULT_START_WAREHOUSE);
     if (!config.hasUserValue(CONFIG_NAME, END_WAREHOUSE)
-            && !config.hasUserValue(CONFIG_NAME, NUM_WAREHOUSES)) {
+        && !config.hasUserValue(CONFIG_NAME, NUM_WAREHOUSES)) {
       this.endWarehouse = this.startWarehouse;
     } else if (config.hasUserValue(CONFIG_NAME, NUM_WAREHOUSES)) {
       this.endWarehouse =
-              this.startWarehouse + (int) config.getUserLong(CONFIG_NAME, NUM_WAREHOUSES) - 1;
+          this.startWarehouse + (int) config.getUserLong(CONFIG_NAME, NUM_WAREHOUSES) - 1;
     } else {
       this.endWarehouse = (int) config.getUserLong(CONFIG_NAME, END_WAREHOUSE);
     }
@@ -138,45 +138,45 @@ public class TpccLoader extends PreProcessor {
 
     for (int i = 0; i < concurrency; ++i) {
       executor.execute(
-              () -> {
-                while (true) {
-                  ObjectNode node = queue.poll();
-                  if (node == null) {
-                    if (isAllQueued.get()) {
-                      break;
-                    }
-                    Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
-                    continue;
+          () -> {
+            while (true) {
+              ObjectNode node = queue.poll();
+              if (node == null) {
+                if (isAllQueued.get()) {
+                  break;
+                }
+                Uninterruptibles.sleepUninterruptibly(100, TimeUnit.MILLISECONDS);
+                continue;
+              }
+              while (true) {
+                try {
+                  String nonce = UUID.randomUUID().toString();
+                  if (node.get(Table.KEY_TABLE_NAME).asText().equals(History.NAME)) {
+                    node.put(Table.QueryParam.KEY_NONCE, nonce);
                   }
-                  while (true) {
-                    try {
-                      String nonce = UUID.randomUUID().toString();
-                      if (node.get(Table.KEY_TABLE_NAME).asText().equals(History.NAME)) {
-                        node.put(Table.QueryParam.KEY_NONCE, nonce);
-                      }
-                      service.executeContract(nonce, loaderContractId, node.toString());
-                      succeededCounter.incrementAndGet();
-                      break;
-                    } catch (ClientException e) {
-                      if (e.getStatusCode() != StatusCode.CONFLICT) {
-                        e.printStackTrace();
-                        failedCounter.incrementAndGet();
-                      }
-                    }
+                  service.executeContract(nonce, loaderContractId, node.toString());
+                  succeededCounter.incrementAndGet();
+                  break;
+                } catch (ClientException e) {
+                  if (e.getStatusCode() != StatusCode.CONFLICT) {
+                    e.printStackTrace();
+                    failedCounter.incrementAndGet();
                   }
                 }
-              });
+              }
+            }
+          });
     }
 
     Future<?> future =
-            executor.submit(
-                    () -> {
-                      while (!isAllQueued.get()
-                              || succeededCounter.get() + failedCounter.get() < queuedCounter.get()) {
-                        logInfo(succeededCounter.get() + " succeeded, " + failedCounter + " failed");
-                        Uninterruptibles.sleepUninterruptibly(1000, TimeUnit.MILLISECONDS);
-                      }
-                    });
+        executor.submit(
+            () -> {
+              while (!isAllQueued.get()
+                  || succeededCounter.get() + failedCounter.get() < queuedCounter.get()) {
+                logInfo(succeededCounter.get() + " succeeded, " + failedCounter + " failed");
+                Uninterruptibles.sleepUninterruptibly(1000, TimeUnit.MILLISECONDS);
+              }
+            });
 
     if (!skipItemLoad) {
       for (int itemId = 1; itemId <= Table.Item.ITEMS; itemId++) {
@@ -209,7 +209,7 @@ public class TpccLoader extends PreProcessor {
   }
 
   private void queueWarehouses(BlockingQueue<ObjectNode> queue, AtomicInteger counter)
-          throws InterruptedException {
+      throws InterruptedException {
     LocalDateTime date = LocalDateTime.now(ZoneId.systemDefault());
     for (int warehouseId = startWarehouse; warehouseId <= endWarehouse; warehouseId++) {
       queue.put(buildWarehouseJson(warehouseId));
@@ -223,8 +223,8 @@ public class TpccLoader extends PreProcessor {
   }
 
   private void queueDistricts(
-          BlockingQueue<ObjectNode> queue, AtomicInteger counter, int warehouseId, LocalDateTime date)
-          throws InterruptedException {
+      BlockingQueue<ObjectNode> queue, AtomicInteger counter, int warehouseId, LocalDateTime date)
+      throws InterruptedException {
     for (int districtId = 1; districtId <= Table.Warehouse.DISTRICTS; districtId++) {
       queue.put(buildDistrictJson(warehouseId, districtId));
       counter.incrementAndGet();
@@ -234,12 +234,12 @@ public class TpccLoader extends PreProcessor {
   }
 
   private void queueCustomers(
-          BlockingQueue<ObjectNode> queue,
-          AtomicInteger counter,
-          int warehouseId,
-          int districtId,
-          LocalDateTime date)
-          throws InterruptedException {
+      BlockingQueue<ObjectNode> queue,
+      AtomicInteger counter,
+      int warehouseId,
+      int districtId,
+      LocalDateTime date)
+      throws InterruptedException {
     Multimap<String, Entry<Integer, String>> map = HashMultimap.create();
     for (int customerId = 1; customerId <= Table.District.CUSTOMERS; customerId++) {
       ObjectNode customer = buildCustomerJson(warehouseId, districtId, customerId, date);
@@ -251,30 +251,30 @@ public class TpccLoader extends PreProcessor {
       counter.incrementAndGet();
       // history
       queue.put(
-              buildHistoryJson(customerId, districtId, warehouseId, districtId, warehouseId, date));
+          buildHistoryJson(customerId, districtId, warehouseId, districtId, warehouseId, date));
       counter.incrementAndGet();
     }
 
     // customer_secondary
     map.asMap()
-            .forEach(
-                    (last, entries) -> {
-                      try {
-                        queue.put(buildCustomerSecondaryJson(warehouseId, districtId, last, entries));
-                        counter.incrementAndGet();
-                      } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                      }
-                    });
+        .forEach(
+            (last, entries) -> {
+              try {
+                queue.put(buildCustomerSecondaryJson(warehouseId, districtId, last, entries));
+                counter.incrementAndGet();
+              } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+              }
+            });
   }
 
   private void queueOrders(
-          BlockingQueue<ObjectNode> queue,
-          AtomicInteger counter,
-          int warehouseId,
-          int districtId,
-          LocalDateTime date)
-          throws InterruptedException {
+      BlockingQueue<ObjectNode> queue,
+      AtomicInteger counter,
+      int warehouseId,
+      int districtId,
+      LocalDateTime date)
+      throws InterruptedException {
     List<Integer> customers = new ArrayList<>();
     for (int customerId = 1; customerId <= Table.District.CUSTOMERS; customerId++) {
       customers.add(customerId);
@@ -293,8 +293,8 @@ public class TpccLoader extends PreProcessor {
         int itemId = TpccCommon.randomInt(1, Table.Item.ITEMS);
         // order-line
         queue.put(
-                buildOrderLineJson(
-                        warehouseId, districtId, orderId, number, warehouseId, itemId, date));
+            buildOrderLineJson(
+                warehouseId, districtId, orderId, number, warehouseId, itemId, date));
         counter.incrementAndGet();
       }
       if (orderId > 2100) {
@@ -306,15 +306,15 @@ public class TpccLoader extends PreProcessor {
   }
 
   private ObjectNode buildCustomerJson(
-          int warehouseId, int districtId, int customerId, LocalDateTime date) {
+      int warehouseId, int districtId, int customerId, LocalDateTime date) {
     ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Customer.NAME);
     node.put(Table.Customer.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.Customer.KEY_DISTRICT_ID, districtId);
     node.put(Table.Customer.KEY_CUSTOMER_ID, customerId);
     node.put(
-            Table.Customer.KEY_FIRST,
-            TpccCommon.randomAlphaString(Table.Customer.MIN_FIRST, Table.Customer.MAX_FIRST));
+        Table.Customer.KEY_FIRST,
+        TpccCommon.randomAlphaString(Table.Customer.MIN_FIRST, Table.Customer.MAX_FIRST));
     node.put(Table.Customer.KEY_MIDDLE, "OE");
     if (customerId <= 1000) {
       node.put(Table.Customer.KEY_LAST, TpccCommon.getLastName(customerId - 1));
@@ -335,17 +335,17 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.Customer.KEY_PHONE, TpccCommon.randomNumberString(Table.Customer.PHONE_SIZE));
     node.put(Table.Customer.KEY_SINCE, date.format(TpccCommon.FORMATTER));
     node.put(
-            Table.Customer.KEY_DATA,
-            TpccCommon.randomAlphaString(Table.Customer.MIN_DATA, Table.Customer.MAX_DATA));
+        Table.Customer.KEY_DATA,
+        TpccCommon.randomAlphaString(Table.Customer.MIN_DATA, Table.Customer.MAX_DATA));
     putAddress(node, Table.Customer.PREFIX);
     return node;
   }
 
   private ObjectNode buildCustomerSecondaryJson(
-          int warehouseId,
-          int districtId,
-          String lastName,
-          Collection<Entry<Integer, String>> entries) {
+      int warehouseId,
+      int districtId,
+      String lastName,
+      Collection<Entry<Integer, String>> entries) {
     ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.CustomerSecondary.NAME);
     node.put(Table.CustomerSecondary.KEY_WAREHOUSE_ID, warehouseId);
@@ -353,9 +353,9 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.CustomerSecondary.KEY_LAST, lastName);
     ArrayNode keyCustomerIdList = mapper.createArrayNode();
     entries.forEach(
-            entry ->
-                    keyCustomerIdList.add(
-                            mapper.createArrayNode().add(entry.getKey()).add(entry.getValue())));
+        entry ->
+            keyCustomerIdList.add(
+                mapper.createArrayNode().add(entry.getKey()).add(entry.getValue())));
     node.set(Table.CustomerSecondary.KEY_CUSTOMER_ID_LIST, keyCustomerIdList);
     return node;
   }
@@ -366,8 +366,8 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.District.KEY_WAREHOUSE_ID, warehouseId);
     node.put(Table.District.KEY_DISTRICT_ID, districtId);
     node.put(
-            Table.District.KEY_NAME,
-            TpccCommon.randomAlphaString(Table.District.MIN_NAME, Table.District.MAX_NAME));
+        Table.District.KEY_NAME,
+        TpccCommon.randomAlphaString(Table.District.MIN_NAME, Table.District.MAX_NAME));
     node.put(Table.District.KEY_TAX, TpccCommon.randomDouble(0, 2000, 10000));
     node.put(Table.District.KEY_YTD, 30000.00);
     node.put(Table.District.KEY_NEXT_O_ID, 3001);
@@ -376,12 +376,12 @@ public class TpccLoader extends PreProcessor {
   }
 
   private ObjectNode buildHistoryJson(
-          int customerId,
-          int customerDistrictId,
-          int customerWarehouseId,
-          int districtId,
-          int warehouseId,
-          LocalDateTime date) {
+      int customerId,
+      int customerDistrictId,
+      int customerWarehouseId,
+      int districtId,
+      int warehouseId,
+      LocalDateTime date) {
     ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.History.NAME);
     node.put(Table.History.KEY_CUSTOMER_ID, customerId);
@@ -392,8 +392,8 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.History.KEY_DATE, date.format(TpccCommon.FORMATTER));
     node.put(Table.History.KEY_AMOUNT, 10.00);
     node.put(
-            Table.History.KEY_DATA,
-            TpccCommon.randomAlphaString(Table.History.MIN_DATA, Table.History.MAX_DATA));
+        Table.History.KEY_DATA,
+        TpccCommon.randomAlphaString(Table.History.MIN_DATA, Table.History.MAX_DATA));
     return node;
   }
 
@@ -402,12 +402,12 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.KEY_TABLE_NAME, Table.Item.NAME);
     node.put(Table.Item.KEY_ITEM_ID, itemId);
     node.put(
-            Table.Item.KEY_NAME,
-            TpccCommon.randomAlphaString(Table.Item.MIN_NAME, Table.Item.MAX_NAME));
+        Table.Item.KEY_NAME,
+        TpccCommon.randomAlphaString(Table.Item.MIN_NAME, Table.Item.MAX_NAME));
     node.put(Table.Item.KEY_PRICE, TpccCommon.randomDouble(100, 1000, 100));
     node.put(
-            Table.Item.KEY_DATA,
-            TpccCommon.getRandomStringWithOriginal(Table.Item.MIN_DATA, Table.Item.MAX_DATA, 10));
+        Table.Item.KEY_DATA,
+        TpccCommon.getRandomStringWithOriginal(Table.Item.MIN_DATA, Table.Item.MAX_DATA, 10));
     node.put(Table.Item.KEY_IM_ID, TpccCommon.randomInt(1, 10000));
     return node;
   }
@@ -422,7 +422,7 @@ public class TpccLoader extends PreProcessor {
   }
 
   private ObjectNode buildOrderJson(
-          int warehouseId, int districtId, int orderId, int customerId, LocalDateTime date) {
+      int warehouseId, int districtId, int orderId, int customerId, LocalDateTime date) {
     ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.Order.NAME);
     node.put(Table.Order.KEY_WAREHOUSE_ID, warehouseId);
@@ -435,21 +435,21 @@ public class TpccLoader extends PreProcessor {
       node.put(Table.Order.KEY_CARRIER_ID, 0);
     }
     node.put(
-            Table.Order.KEY_OL_CNT,
-            TpccCommon.randomInt(Table.OrderLine.MIN_PER_ORDER, Table.OrderLine.MAX_PER_ORDER));
+        Table.Order.KEY_OL_CNT,
+        TpccCommon.randomInt(Table.OrderLine.MIN_PER_ORDER, Table.OrderLine.MAX_PER_ORDER));
     node.put(Table.Order.KEY_ALL_LOCAL, 1);
     node.put(Table.Order.KEY_ENTRY_D, date.format(TpccCommon.FORMATTER));
     return node;
   }
 
   private ObjectNode buildOrderLineJson(
-          int warehouseId,
-          int districtId,
-          int orderId,
-          int number,
-          int supplyWarehouseId,
-          int itemId,
-          LocalDateTime date) {
+      int warehouseId,
+      int districtId,
+      int orderId,
+      int number,
+      int supplyWarehouseId,
+      int itemId,
+      LocalDateTime date) {
     ObjectNode node = mapper.createObjectNode();
     node.put(Table.KEY_TABLE_NAME, Table.OrderLine.NAME);
     node.put(Table.OrderLine.KEY_WAREHOUSE_ID, warehouseId);
@@ -467,8 +467,8 @@ public class TpccLoader extends PreProcessor {
     }
     node.put(Table.OrderLine.KEY_QUANTITY, 5);
     node.put(
-            Table.OrderLine.KEY_DIST_INFO,
-            TpccCommon.randomAlphaString(Table.OrderLine.DIST_INFO_SIZE));
+        Table.OrderLine.KEY_DIST_INFO,
+        TpccCommon.randomAlphaString(Table.OrderLine.DIST_INFO_SIZE));
     return node;
   }
 
@@ -495,26 +495,26 @@ public class TpccLoader extends PreProcessor {
     node.put(Table.Warehouse.KEY_YTD, 300000.00);
     node.put(Table.Warehouse.KEY_TAX, TpccCommon.randomDouble(0, 2000, 10000));
     node.put(
-            Table.Warehouse.KEY_WAREHOUSE_NAME,
-            TpccCommon.randomAlphaString(Table.Warehouse.MIN_NAME, Table.Warehouse.MAX_NAME));
+        Table.Warehouse.KEY_WAREHOUSE_NAME,
+        TpccCommon.randomAlphaString(Table.Warehouse.MIN_NAME, Table.Warehouse.MAX_NAME));
     putAddress(node, Table.Warehouse.PREFIX);
     return node;
   }
 
   private void putAddress(ObjectNode node, String prefix) {
     node.put(
-            prefix + Table.Address.KEY_STREET_1,
-            TpccCommon.randomAlphaString(Table.Address.MIN_STREET, Table.Address.MAX_STREET));
+        prefix + Table.Address.KEY_STREET_1,
+        TpccCommon.randomAlphaString(Table.Address.MIN_STREET, Table.Address.MAX_STREET));
     node.put(
-            prefix + Table.Address.KEY_STREET_2,
-            TpccCommon.randomAlphaString(Table.Address.MIN_STREET, Table.Address.MAX_STREET));
+        prefix + Table.Address.KEY_STREET_2,
+        TpccCommon.randomAlphaString(Table.Address.MIN_STREET, Table.Address.MAX_STREET));
     node.put(
-            prefix + Table.Address.KEY_CITY,
-            TpccCommon.randomAlphaString(Table.Address.MIN_CITY, Table.Address.MAX_CITY));
+        prefix + Table.Address.KEY_CITY,
+        TpccCommon.randomAlphaString(Table.Address.MIN_CITY, Table.Address.MAX_CITY));
     node.put(
-            prefix + Table.Address.KEY_STATE, TpccCommon.randomAlphaString(Table.Address.STATE_SIZE));
+        prefix + Table.Address.KEY_STATE, TpccCommon.randomAlphaString(Table.Address.STATE_SIZE));
     node.put(
-            prefix + Table.Address.KEY_ZIP,
-            TpccCommon.randomAlphaString(Table.Address.ZIP_SIZE) + "11111");
+        prefix + Table.Address.KEY_ZIP,
+        TpccCommon.randomAlphaString(Table.Address.ZIP_SIZE) + "11111");
   }
 }
