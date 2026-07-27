@@ -1,5 +1,5 @@
 plugins {
-    id 'java-library-distribution'
+    id 'application'
     id 'com.gradleup.shadow' version '8.3.6'
 }
 
@@ -12,12 +12,24 @@ dependencies {
     implementation group: 'com.scalar-labs', name: 'kelpie', version: '1.2.3'
     implementation group: 'com.scalar-labs', name: 'scalardl-java-client-sdk', version: '3.13.0'
     implementation group: 'io.github.resilience4j', name: 'resilience4j-retry', version: '1.3.1'
+    implementation group: 'info.picocli', name: 'picocli', version: '4.7.7'
+    testImplementation group: 'org.junit.jupiter', name: 'junit-jupiter', version: '5.10.2'
+    testImplementation group: 'org.assertj', name: 'assertj-core', version: '3.26.3'
 }
 
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(8)
     }
+}
+
+application {
+    mainClass = 'com.scalar.dl.benchmarks.ycsb.RecoveryStateSeeder'
+    applicationName = 'recovery-seeder'
+}
+
+test {
+    useJUnitPlatform()
 }
 
 shadowJar {
