@@ -112,5 +112,28 @@ Set up the above components and then properly configure Client, Ledger and Audit
 | `load_concurrency` | Number of threads for loading.                     | 1       |
 | `load_batch_size`  | Number of records in a single loading transaction. | 1       |
 | `load_max_retries` | Maximum number of retries per loading transaction for transient errors. | 5 |
-| `load_failed_ranges_file` | File to which the record-ID ranges that could not be loaded are written when the load fails. | ycsb-load-failed-ranges.json |
+| `load_max_consecutive_failures` | Give up on the whole load after this many consecutive failed transactions. | 20 |
+| `load_max_failed_records` | Give up on the whole load after this many failed records in total. | 1000000 |
+| `load_failed_ranges_file` | File to which the record-ID ranges that may not have been loaded are written. | ycsb-load-failed-ranges.json |
 | `load_retry_file`  | When set, only the record-ID ranges recorded in this file are loaded (to resume a failed load). | (none) |
+
+#### Resuming a failed load
+
+The `Create` contract appends a new asset version on every call, so loading a record ID twice
+leaves an extra version that cannot be removed through ScalarDL. A failed load must therefore
+never be re-run in full; resume it instead:
+
+1. Fix whatever made the load fail.
+2. Set `load_retry_file` to the file named in the error message, and set
+   `load_failed_ranges_file` to a **new** name (the run overwrites its output, so reusing the same
+   name would destroy the only record of what is missing if the run fails again).
+3. Run the loader alone with `--only-pre`.
+
+If instead the loader reports that it gave up (`load_max_consecutive_failures` or
+`load_max_failed_records` was reached, or a non-retriable error occurred), no failed-ranges file is
+written: that many failures indicates a problem with the environment, and the partially loaded data
+cannot be resumed onto. Delete the loaded data and run the load again from scratch.
+
+For 10 million records or more, raise `load_batch_size` to 50–200. One transaction per record
+means one round trip per record, and the loader also keeps a small amount of state per batch, so a
+batch size of 1 makes such loads both slow and memory hungry.
