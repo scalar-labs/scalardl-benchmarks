@@ -22,7 +22,6 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
@@ -39,10 +38,15 @@ public class YcsbLoader extends PreProcessor {
   /**
    * Status codes worth retrying a load batch for. Note that transport-level failures (a reset
    * stream, an unreachable server, ...) surface as UNKNOWN_TRANSACTION_STATUS because the client
-   * maps any error without a ScalarDL status trailer to it. Retrying after
-   * UNKNOWN_TRANSACTION_STATUS may re-insert a batch whose first attempt actually committed; the
-   * Create contract appends blindly, so the affected assets end up with an extra version, which is
-   * harmless for the benchmark (workloads only touch the latest version).
+   * maps any error without a ScalarDL status trailer to it.
+   *
+   * <p>UNKNOWN_TRANSACTION_STATUS means the outcome is unknown, so both retrying it and giving up
+   * on it are inexact. The argument is built once outside the retry loop, so a re-inserted batch
+   * writes the same values and the workloads, which only read the latest version, observe no
+   * difference. What does change is the number of asset versions, which affects how reproducible a
+   * benchmark run is; and a batch that ends up in the failed-ranges file after this status may in
+   * fact have been committed, which is why those ranges are reported as "may not have been loaded"
+   * rather than as definitely missing.
    */
   private static final Set<StatusCode> RETRIABLE_CODES =
       EnumSet.of(
@@ -61,6 +65,8 @@ public class YcsbLoader extends PreProcessor {
   private final int recordCount;
   private final int payloadSize;
   private final int maxRetries;
+  private final int maxConsecutiveFailures;
+  private final long maxFailedRecords;
   private final String failedRangesFile;
   private final String retryFile;
   private final String createContractId;
@@ -86,8 +92,11 @@ public class YcsbLoader extends PreProcessor {
     this.recordCount = YcsbCommon.getRecordCount(config);
     this.payloadSize = YcsbCommon.getPayloadSize(config);
     this.maxRetries = YcsbCommon.getLoadMaxRetries(config);
+    this.maxConsecutiveFailures = YcsbCommon.getLoadMaxConsecutiveFailures(config);
+    this.maxFailedRecords = YcsbCommon.getLoadMaxFailedRecords(config);
     this.failedRangesFile = YcsbCommon.getLoadFailedRangesFile(config);
     this.retryFile = YcsbCommon.getLoadRetryFile(config);
+    checkConfig();
     this.createContractId = YcsbCommon.getCreateContractId(config);
     this.createContractName = YcsbCommon.getCreateContractName(config);
     this.createContractPath = YcsbCommon.getCreateContractPath(config);
@@ -102,6 +111,32 @@ public class YcsbLoader extends PreProcessor {
     this.workloadFContractPath = YcsbCommon.getWorkloadFContractPath(config);
   }
 
+  private void checkConfig() {
+    checkAtLeast(recordCount, 1, YcsbCommon.RECORD_COUNT);
+    checkAtLeast(batchSize, 1, YcsbCommon.LOAD_BATCH_SIZE);
+    checkAtLeast(concurrency, 1, YcsbCommon.LOAD_CONCURRENCY);
+    checkAtLeast(maxRetries, 0, YcsbCommon.LOAD_MAX_RETRIES);
+    checkAtLeast(maxConsecutiveFailures, 1, YcsbCommon.LOAD_MAX_CONSECUTIVE_FAILURES);
+    checkAtLeast(maxFailedRecords, 1, YcsbCommon.LOAD_MAX_FAILED_RECORDS);
+    // Fail before loading anything rather than when the failed ranges must be persisted.
+    File file = new File(failedRangesFile).getAbsoluteFile();
+    File parent = file.getParentFile();
+    if (parent == null || !parent.isDirectory()) {
+      throw new IllegalArgumentException(
+          YcsbCommon.LOAD_FAILED_RANGES_FILE + " has no existing directory: " + file);
+    }
+    if (file.exists() ? !file.canWrite() : !parent.canWrite()) {
+      throw new IllegalArgumentException(
+          YcsbCommon.LOAD_FAILED_RANGES_FILE + " is not writable: " + file);
+    }
+  }
+
+  private static void checkAtLeast(long value, long minimum, String name) {
+    if (value < minimum) {
+      throw new IllegalArgumentException(name + " must be >= " + minimum + ", but was " + value);
+    }
+  }
+
   @Override
   public void execute() {
     bootstrapAndRegisterContracts();
@@ -114,17 +149,9 @@ public class YcsbLoader extends PreProcessor {
   }
 
   private void bootstrapAndRegisterContracts() {
-    // Tolerate already-registered identities and contracts so that a resumed load (or a re-run
-    // against a bootstrapped environment) does not fail at registration.
-    try {
-      service.bootstrap();
-    } catch (ClientException e) {
-      if (e.getStatusCode() != StatusCode.CERTIFICATE_ALREADY_REGISTERED
-          && e.getStatusCode() != StatusCode.SECRET_ALREADY_REGISTERED) {
-        throw e;
-      }
-      logInfo("the identity has already been registered");
-    }
+    // ClientService.bootstrap() already tolerates an identity that is registered, so a resumed
+    // load (or a re-run against a bootstrapped environment) passes through here.
+    service.bootstrap();
     registerContract(createContractId, createContractName, createContractPath);
     registerContract(workloadAContractId, workloadAContractName, workloadAContractPath);
     registerContract(workloadCContractId, workloadCContractName, workloadCContractPath);
@@ -138,7 +165,17 @@ public class YcsbLoader extends PreProcessor {
       if (e.getStatusCode() != StatusCode.CONTRACT_ALREADY_REGISTERED) {
         throw e;
       }
-      logInfo("contract " + id + " has already been registered");
+      // Registration is keyed by contract ID only, so the deployed bytecode is NOT updated here.
+      // Warn rather than inform: editing a contract class and re-running silently keeps running
+      // the previously deployed version.
+      logWarn(
+          "contract "
+              + id
+              + " is already registered, so the deployed bytecode was left as it is; "
+              + name
+              + " from "
+              + path
+              + " was NOT deployed");
     }
   }
 
@@ -154,9 +191,10 @@ public class YcsbLoader extends PreProcessor {
     }
 
     AtomicInteger cursor = new AtomicInteger(0);
-    Set<Integer> succeeded = ConcurrentHashMap.newKeySet();
-    AtomicBoolean aborted = new AtomicBoolean(false);
-    AtomicReference<ClientException> fatal = new AtomicReference<>();
+    // Written by exactly one worker per index and read only after join(), so no synchronization is
+    // needed. A boxed Set would cost ~50 bytes per batch, which matters at 10^7 batches and above.
+    boolean[] succeeded = new boolean[batches.size()];
+    LoadState state = new LoadState();
     AtomicBoolean workersDone = new AtomicBoolean(false);
 
     ExecutorService executor = Executors.newCachedThreadPool();
@@ -164,8 +202,7 @@ public class YcsbLoader extends PreProcessor {
       List<CompletableFuture<Void>> workers = new ArrayList<>();
       for (int i = 0; i < concurrency; i++) {
         workers.add(
-            CompletableFuture.runAsync(
-                () -> runWorker(batches, cursor, succeeded, aborted, fatal), executor));
+            CompletableFuture.runAsync(() -> runWorker(batches, cursor, succeeded, state), executor));
       }
       long totalRecords = plannedRecords;
       CompletableFuture<Void> monitor =
@@ -177,16 +214,39 @@ public class YcsbLoader extends PreProcessor {
                 }
               },
               executor);
-      CompletableFuture.allOf(workers.toArray(new CompletableFuture[0])).join();
-      workersDone.set(true);
-      monitor.join();
+      try {
+        CompletableFuture.allOf(workers.toArray(new CompletableFuture[0])).join();
+      } finally {
+        // Must run even when join() throws, or the monitor keeps spinning and, more importantly,
+        // the failed ranges below are never recorded.
+        workersDone.set(true);
+        monitor.join();
+      }
     } finally {
       executor.shutdown();
     }
 
+    String abortReason = state.abortReason.get();
+    if (abortReason != null) {
+      // A systemic failure. The partially loaded data cannot be topped up because the Create
+      // contract appends blindly, so a resume file would be useless: say so instead of writing one.
+      String summary =
+          "load aborted: "
+              + abortReason
+              + ". "
+              + counter.get()
+              + " of "
+              + plannedRecords
+              + " records had been loaded. Fix the underlying problem, delete the loaded data, and"
+              + " run the load again; no failed-ranges file was written because the partially"
+              + " loaded data cannot be resumed onto.";
+      logError(summary);
+      throw new PreProcessException(summary, state.fatal.get());
+    }
+
     List<Range> failed = new ArrayList<>();
     for (int i = 0; i < batches.size(); i++) {
-      if (!succeeded.contains(i)) {
+      if (!succeeded[i]) {
         failed.add(batches.get(i));
       }
     }
@@ -195,23 +255,32 @@ public class YcsbLoader extends PreProcessor {
       return;
     }
 
-    File file = new File(failedRangesFile);
+    File file = new File(failedRangesFile).getAbsoluteFile();
     YcsbLoadFailedRanges failedRanges = new YcsbLoadFailedRanges(recordCount, failed);
-    failedRanges.write(file);
     String summary =
         failed.size()
             + " batches ("
             + failedRanges.totalRecords()
-            + " records) could not be loaded; their ranges were written to "
-            + file.getAbsolutePath()
-            + ". Set [ycsb_config] load_retry_file = \""
-            + failedRangesFile
-            + "\" to load only the missing ranges.";
+            + " records) may not have been loaded; their ranges are being written to "
+            + file
+            + ". Set [ycsb_config] load_retry_file to that file to load only those ranges.";
+    // Log before writing: if the write fails, this is the only remaining record of what is missing.
     logError(summary);
-    if (fatal.get() != null) {
-      throw new PreProcessException("load failed: " + summary, fatal.get());
+    try {
+      failedRanges.write(file);
+    } catch (RuntimeException e) {
+      logError("could not write " + file + "; the ranges that may be missing are: " + failed);
+      throw new PreProcessException("load failed: " + summary, e);
     }
     throw new PreProcessException("load failed: " + summary);
+  }
+
+  /** Failure bookkeeping shared by the workers. */
+  private static final class LoadState {
+    private final AtomicInteger consecutiveFailures = new AtomicInteger();
+    private final AtomicLong failedRecords = new AtomicLong();
+    private final AtomicReference<String> abortReason = new AtomicReference<>();
+    private final AtomicReference<Throwable> fatal = new AtomicReference<>();
   }
 
   private List<Range> planBatches() {
@@ -220,14 +289,19 @@ public class YcsbLoader extends PreProcessor {
     }
     YcsbLoadFailedRanges failedRanges = YcsbLoadFailedRanges.read(new File(retryFile));
     if (failedRanges.getRecordCount() != recordCount) {
-      logWarn(
-          "record_count in "
+      // The ranges are coordinates into a different data set, so resuming from them would load
+      // record IDs that already exist. That cannot be undone, so refuse rather than warn.
+      throw new IllegalArgumentException(
+          YcsbCommon.RECORD_COUNT
+              + " in "
               + retryFile
               + " ("
               + failedRanges.getRecordCount()
-              + ") does not match the configured record_count ("
+              + ") does not match the configured "
+              + YcsbCommon.RECORD_COUNT
+              + " ("
               + recordCount
-              + "); check that the retry file belongs to this environment");
+              + "); the retry file belongs to a different data set");
     }
     logInfo(
         "resuming the load from "
@@ -264,33 +338,56 @@ public class YcsbLoader extends PreProcessor {
   }
 
   private void runWorker(
-      List<Range> batches,
-      AtomicInteger cursor,
-      Set<Integer> succeeded,
-      AtomicBoolean aborted,
-      AtomicReference<ClientException> fatal) {
+      List<Range> batches, AtomicInteger cursor, boolean[] succeeded, LoadState state) {
     char[] payload = new char[payloadSize];
     int index;
     while ((index = cursor.getAndIncrement()) < batches.size()) {
-      if (aborted.get()) {
+      if (state.abortReason.get() != null) {
         return;
       }
       Range batch = batches.get(index);
       try {
         if (loadBatchWithRetry(batch, payload)) {
-          succeeded.add(index);
+          succeeded[index] = true;
           counter.getAndAdd(batch.size());
+          state.consecutiveFailures.set(0);
+        } else {
+          // Retries exhausted. The batch stays out of `succeeded` and thus ends up in the
+          // failed-ranges file, while the other batches keep loading.
+          recordBatchFailure(batch, state);
         }
-        // false: retries exhausted; the batch stays out of `succeeded` and thus ends up in the
-        // failed-ranges file, while the other batches keep loading.
-      } catch (ClientException e) {
-        // A non-retriable error (unregistered contract, invalid signature, ...) fails every batch
-        // the same way, so stop the whole load instead of grinding through the rest.
-        fatal.compareAndSet(null, e);
-        aborted.set(true);
-        logError("giving up the load due to a non-retriable error: " + e.getMessage());
+      } catch (Throwable t) {
+        // Throwable, not ClientException: an unexpected RuntimeException or Error would otherwise
+        // escape the worker, make allOf().join() throw, and skip the failed-ranges bookkeeping
+        // entirely. A non-retriable ClientException (unregistered contract, invalid signature,
+        // ...) fails every batch the same way, so both cases stop the whole load.
+        state.fatal.compareAndSet(null, t);
+        state.abortReason.compareAndSet(null, "a non-retriable error occurred (" + t + ")");
+        logError("giving up the load due to a non-retriable error: " + t);
         return;
       }
+    }
+  }
+
+  /**
+   * Counts a batch that exhausted its retries and gives up on the whole load once the failures look
+   * systemic. Consecutive failures are the health signal: a random per-batch failure rate
+   * practically never produces a long run of them, while an unavailable backend does so within
+   * seconds, and unlike a ratio the threshold needs no tuning per record count. The total is a
+   * resource bound that keeps the failed-ranges file from growing without limit.
+   */
+  private void recordBatchFailure(Range batch, LoadState state) {
+    long records = state.failedRecords.addAndGet(batch.size());
+    int consecutive = state.consecutiveFailures.incrementAndGet();
+    if (consecutive >= maxConsecutiveFailures) {
+      state.abortReason.compareAndSet(
+          null,
+          consecutive
+              + " batches failed in a row, which indicates a problem with the environment rather"
+              + " than transient errors");
+    } else if (records >= maxFailedRecords) {
+      state.abortReason.compareAndSet(
+          null, records + " records failed, reaching " + YcsbCommon.LOAD_MAX_FAILED_RECORDS);
     }
   }
 

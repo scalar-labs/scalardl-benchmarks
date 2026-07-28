@@ -9,6 +9,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -112,13 +113,59 @@ public final class YcsbLoadFailedRanges {
               + ": "
               + file);
     }
+    // Every check below guards against loading a record ID twice. The Create contract appends
+    // blindly, so a duplicate load leaves an extra asset version that cannot be removed through
+    // ScalarDL. Silently accepting a malformed file is therefore never acceptable.
+    int recordCount = intValueOf(root.get(KEY_RECORD_COUNT), KEY_RECORD_COUNT, file);
+    if (recordCount < 1) {
+      throw new IllegalArgumentException(
+          KEY_RECORD_COUNT + " must be >= 1, but was " + recordCount + ": " + file);
+    }
+    JsonNode array = root.get(KEY_FAILED_RANGES);
+    if (!array.isArray()) {
+      // A JsonNode iterates as an empty sequence when it is not a container, which would turn a
+      // truncated or hand-edited file into an empty "nothing to load" run reported as a success.
+      throw new IllegalArgumentException(KEY_FAILED_RANGES + " must be an array: " + file);
+    }
     List<Range> ranges = new ArrayList<>();
-    for (JsonNode node : root.get(KEY_FAILED_RANGES)) {
+    for (JsonNode node : array) {
       if (!node.has(KEY_START) || !node.has(KEY_END)) {
         throw new IllegalArgumentException("each range must have start and end: " + node);
       }
-      ranges.add(new Range(node.get(KEY_START).asInt(), node.get(KEY_END).asInt()));
+      ranges.add(
+          new Range(
+              intValueOf(node.get(KEY_START), KEY_START, file),
+              intValueOf(node.get(KEY_END), KEY_END, file)));
     }
-    return new YcsbLoadFailedRanges(root.get(KEY_RECORD_COUNT).asInt(), ranges);
+    if (ranges.isEmpty()) {
+      throw new IllegalArgumentException(
+          KEY_FAILED_RANGES + " is empty; there is nothing to resume from: " + file);
+    }
+    ranges.sort(Comparator.comparingInt(Range::getStart));
+    int previousEnd = 0;
+    for (Range range : ranges) {
+      if (range.getStart() < previousEnd) {
+        throw new IllegalArgumentException(
+            "overlapping or duplicated ranges would load the same record IDs twice: "
+                + range
+                + " in "
+                + file);
+      }
+      if (range.getEnd() > recordCount) {
+        throw new IllegalArgumentException(
+            "range " + range + " exceeds " + KEY_RECORD_COUNT + " " + recordCount + ": " + file);
+      }
+      previousEnd = range.getEnd();
+    }
+    return new YcsbLoadFailedRanges(recordCount, ranges);
+  }
+
+  /** Rejects values that {@code asInt()} would silently coerce (strings, decimals, huge longs). */
+  private static int intValueOf(JsonNode node, String name, File file) {
+    if (!node.canConvertToInt()) {
+      throw new IllegalArgumentException(
+          name + " must be an int value, but was " + node + ": " + file);
+    }
+    return node.intValue();
   }
 }
