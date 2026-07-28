@@ -28,10 +28,27 @@ application {
     applicationName = 'recovery-seeder'
 }
 
+// The application plugin derives the main distribution name from applicationName, which would
+// rename the whole suite's distribution to recovery-seeder.*. Keep the project name.
+distributions {
+    main {
+        distributionBaseName = 'scalardl-benchmarks'
+    }
+}
+
+// The application plugin also activates shadow's distribution tasks and wires them into assemble.
+// Disabling them keeps `build` from producing two extra ~200-dependency archives. Note that
+// shadowJar itself still runs as their dependency, which the Kelpie workflow needs anyway.
+tasks.named('shadowDistZip') { enabled = false }
+tasks.named('shadowDistTar') { enabled = false }
+
 test {
     useJUnitPlatform()
 }
 
+// Note: shadow's application integration also injects `Main-Class: ...RecoveryStateSeeder` into
+// this jar's manifest, and it cannot be removed from the build script. It is inert for the Kelpie
+// workflow, which loads modules by class name rather than by manifest entry.
 shadowJar {
     manifest {
         attributes(

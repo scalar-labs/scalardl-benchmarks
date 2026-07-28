@@ -13,6 +13,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
@@ -50,6 +51,9 @@ public class RecoveryStateSeeder implements Callable<Integer> {
   }
 
   private static final long SHUTDOWN_DRAIN_SECONDS = 30;
+  private static final long SUMMARY_WAIT_SECONDS = 10;
+
+  private final CountDownLatch summaryPrinted = new CountDownLatch(1);
 
   @Option(
       names = "--properties",
@@ -164,15 +168,20 @@ public class RecoveryStateSeeder implements Callable<Integer> {
       Runtime.getRuntime().addShutdownHook(shutdownHook);
 
       Map<Workload, WorkloadResult> results = new LinkedHashMap<>();
-      for (Workload w : plan.getWorkloads()) {
-        if (executor.isStopped()) {
-          break; // fail-fast in a previous workload; skip the rest entirely
+      try {
+        for (Workload w : plan.getWorkloads()) {
+          if (executor.isStopped()) {
+            break; // fail-fast in a previous workload; skip the rest entirely
+          }
+          results.put(w, executor.runWorkload(contractIdFor(w), plan.executionsFor(w)));
         }
-        results.put(w, executor.runWorkload(contractIdFor(w), plan.executionsFor(w)));
+      } finally {
+        // The summary is the only record of what was written to the database, so print it on
+        // every exit path, including an interrupted run.
+        removeShutdownHookQuietly(shutdownHook);
+        printSummary(plan, results, auditorEnabled);
+        summaryPrinted.countDown();
       }
-      Runtime.getRuntime().removeShutdownHook(shutdownHook);
-
-      printSummary(plan, results, auditorEnabled);
       boolean allExpected =
           results.size() == plan.getWorkloads().size()
               && results.values().stream().allMatch(WorkloadResult::isAllExpected);
@@ -208,8 +217,23 @@ public class RecoveryStateSeeder implements Callable<Integer> {
             + "cleanup tools before seeding again.");
     try {
       executor.awaitDrain(SHUTDOWN_DRAIN_SECONDS);
+      // The JVM halts as soon as every shutdown hook returns, which would kill the main thread
+      // before it can print the summary. Hold the hook open until the summary is out.
+      summaryPrinted.await(SUMMARY_WAIT_SECONDS, TimeUnit.SECONDS);
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
+    }
+  }
+
+  /**
+   * Removes the hook, tolerating the {@link IllegalStateException} that {@code removeShutdownHook}
+   * raises once shutdown is already in progress (the Ctrl-C path).
+   */
+  private static void removeShutdownHookQuietly(Thread shutdownHook) {
+    try {
+      Runtime.getRuntime().removeShutdownHook(shutdownHook);
+    } catch (IllegalStateException e) {
+      // Shutdown already started; the hook is waiting for the summary below.
     }
   }
 
@@ -219,17 +243,16 @@ public class RecoveryStateSeeder implements Callable<Integer> {
     for (Workload w : plan.getWorkloads()) {
       WorkloadResult result = results.get(w);
       if (result == null) {
-        System.out.println("workload " + w + ": skipped (fail-fast in a previous workload)");
+        System.out.println("workload " + w + ": not run (fail-fast or interruption)");
         continue;
       }
-      long executions = plan.getNumAssets() / plan.getOpsPerTx();
       long seededAssets = result.getExpected() * plan.getOpsPerTx();
       if (result.isAllExpected()) {
         System.out.println(
             "workload "
                 + w
                 + ": "
-                + executions
+                + result.getPlanned()
                 + " executions (K="
                 + plan.getOpsPerTx()
                 + "), all failed as expected (UNKNOWN_TRANSACTION_STATUS)");
@@ -238,8 +261,8 @@ public class RecoveryStateSeeder implements Callable<Integer> {
             "workload "
                 + w
                 + ": "
-                + executions
-                + " executions (K="
+                + result.getPlanned()
+                + " executions planned (K="
                 + plan.getOpsPerTx()
                 + "): expected-failure="
                 + result.getExpected()
@@ -250,8 +273,23 @@ public class RecoveryStateSeeder implements Callable<Integer> {
                 + ", not-started="
                 + result.getNotStarted());
       }
+      if (result.getAccounted() != result.getPlanned()) {
+        System.out.println(
+            "  -> WARNING: only "
+                + result.getAccounted()
+                + " of "
+                + result.getPlanned()
+                + " executions were accounted for; the seeded counts below are NOT reliable");
+      }
       System.out.println("  -> " + expectation(w, seededAssets, auditorEnabled));
-      System.out.println("  -> keys: " + plan.describeKeys(w));
+      if (result.isAllExpected()) {
+        System.out.println("  -> keys: " + plan.describeKeys(w));
+      } else {
+        System.out.println(
+            "  -> keys: planned "
+                + plan.describeKeys(w)
+                + "; the subset actually touched is indeterminate because the run stopped early");
+      }
       if (result.getFirstFailure() != null) {
         System.out.println("  -> first failure: " + result.getFirstFailure());
       }

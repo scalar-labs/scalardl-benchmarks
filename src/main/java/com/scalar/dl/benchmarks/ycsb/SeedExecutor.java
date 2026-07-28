@@ -34,8 +34,9 @@ public class SeedExecutor {
     void run(String contractId, JsonNode argument);
   }
 
-  /** Per-workload tally. All executions of the workload fall into exactly one category. */
+  /** Per-workload tally. Every planned execution falls into exactly one category. */
   public static final class WorkloadResult {
+    private final long planned;
     private final long expected;
     private final long unexpectedSuccesses;
     private final long unexpectedErrors;
@@ -43,16 +44,22 @@ public class SeedExecutor {
     private final String firstFailure;
 
     WorkloadResult(
+        long planned,
         long expected,
         long unexpectedSuccesses,
         long unexpectedErrors,
         long notStarted,
         String firstFailure) {
+      this.planned = planned;
       this.expected = expected;
       this.unexpectedSuccesses = unexpectedSuccesses;
       this.unexpectedErrors = unexpectedErrors;
       this.notStarted = notStarted;
       this.firstFailure = firstFailure;
+    }
+
+    public long getPlanned() {
+      return planned;
     }
 
     public long getExpected() {
@@ -76,8 +83,25 @@ public class SeedExecutor {
       return firstFailure;
     }
 
+    /**
+     * Number of executions that landed in one of the four categories. A value below {@link
+     * #getPlanned()} means some executions were lost and the seeded counts cannot be trusted.
+     */
+    public long getAccounted() {
+      return expected + unexpectedSuccesses + unexpectedErrors + notStarted;
+    }
+
+    /**
+     * True only when every planned execution failed in the expected way. Comparing against the
+     * planned count is what makes a lost execution visible: without it, an execution that never
+     * reached any counter would leave the three failure counters at zero and be reported as
+     * success.
+     */
     public boolean isAllExpected() {
-      return unexpectedSuccesses == 0 && unexpectedErrors == 0 && notStarted == 0;
+      return expected == planned
+          && unexpectedSuccesses == 0
+          && unexpectedErrors == 0
+          && notStarted == 0;
     }
   }
 
@@ -144,6 +168,7 @@ public class SeedExecutor {
       }
     }
     return new WorkloadResult(
+        executions.size(),
         expected.get(),
         unexpectedSuccesses.get(),
         unexpectedErrors.get(),
@@ -163,9 +188,10 @@ public class SeedExecutor {
       notStarted.incrementAndGet();
       return;
     }
-    JsonNode argument = buildArgument(execution);
     try {
-      runner.run(contractId, argument);
+      // Inside the try: an exception from buildArgument must be counted like any other unexpected
+      // error, otherwise the execution would vanish from the tally.
+      runner.run(contractId, buildArgument(execution));
       // The transaction committed: the coordinator is writable, i.e., the fault injection is not
       // in place. Continuing would break the seeded-count guarantees.
       firstFailure.compareAndSet(null, describe(execution, "unexpected success: the transaction "
@@ -186,8 +212,11 @@ public class SeedExecutor {
         unexpectedErrors.incrementAndGet();
         requestStop();
       }
-    } catch (RuntimeException e) {
-      firstFailure.compareAndSet(null, describe(execution, "unexpected error: " + e));
+    } catch (Throwable t) {
+      // Throwable, not RuntimeException: an Error (OutOfMemoryError, LinkageError, ...) would
+      // otherwise be swallowed by the thread pool, leaving the execution uncounted while the
+      // failure counters stay at zero.
+      firstFailure.compareAndSet(null, describe(execution, "unexpected error: " + t));
       unexpectedErrors.incrementAndGet();
       requestStop();
     }

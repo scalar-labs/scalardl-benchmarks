@@ -99,6 +99,55 @@ public class SeedExecutorTest {
   }
 
   @Test
+  public void runWorkload_errorThrown_shouldBeCountedAndNotReportedAsAllExpected()
+      throws InterruptedException {
+    // Arrange: an Error (not a RuntimeException) would be swallowed by the thread pool, so the
+    // execution must still be accounted for; otherwise the summary reports success with a
+    // silently reduced seeded count.
+    AtomicInteger calls = new AtomicInteger();
+    SeedExecutor executor =
+        new SeedExecutor(
+            (contractId, argument) -> {
+              if (calls.incrementAndGet() == 4) {
+                throw new StackOverflowError("simulated Error inside the contract call");
+              }
+              throw EXPECTED_FAILURE;
+            },
+            1);
+
+    // Act
+    WorkloadResult result = executor.runWorkload("F", executions(10));
+
+    // Assert
+    assertThat(result.getAccounted()).isEqualTo(result.getPlanned());
+    assertThat(result.getUnexpectedErrors()).isEqualTo(1);
+    assertThat(result.getExpected()).isEqualTo(3);
+    assertThat(result.getNotStarted()).isEqualTo(6);
+    assertThat(result.isAllExpected()).isFalse();
+    assertThat(result.getFirstFailure()).contains("StackOverflowError");
+  }
+
+  @Test
+  public void runWorkload_allExpected_shouldAccountForEveryPlannedExecution()
+      throws InterruptedException {
+    // Arrange
+    SeedExecutor executor =
+        new SeedExecutor(
+            (contractId, argument) -> {
+              throw EXPECTED_FAILURE;
+            },
+            4);
+
+    // Act
+    WorkloadResult result = executor.runWorkload("F", executions(40));
+
+    // Assert
+    assertThat(result.getPlanned()).isEqualTo(40);
+    assertThat(result.getAccounted()).isEqualTo(40);
+    assertThat(result.isAllExpected()).isTrue();
+  }
+
+  @Test
   public void runWorkload_runtimeExceptionThrown_shouldFailFast() throws InterruptedException {
     // Arrange
     SeedExecutor executor =

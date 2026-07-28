@@ -21,7 +21,7 @@ deviation (an execution that commits, or fails with any other error) aborts the 
 ./gradlew installDist
 ```
 
-The launch script is generated at `build/install/recovery-seeder/bin/recovery-seeder`.
+The launch script is generated at `build/install/scalardl-benchmarks/bin/recovery-seeder`.
 
 ## Prerequisites
 
@@ -68,7 +68,7 @@ Restore it from the saved DDL afterwards. The failure path converges to the same
 ## Usage
 
 ```console
-./build/install/recovery-seeder/bin/recovery-seeder \
+./build/install/scalardl-benchmarks/bin/recovery-seeder \
   --properties client.properties \
   --num-assets 10000 \
   --total-assets 1000000
@@ -111,3 +111,13 @@ workload); `2` = option/validation error (nothing was executed).
   are 501). Rehearse the fault-injection procedure in a small environment first; the seeder
   fail-fasts on an unexpected *success*, which is the signature of forgetting to break the
   Coordinator.
+- **Check which deployment the client properties point at before running.** If the Coordinator is
+  in fact writable, workload F commits. The cleanup tools only resolve non-terminal (PREPARED /
+  DELETED) records, so a committed asset version is out of their scope, and the ledger is
+  append-only — undoing it means deleting the tip rows directly from `asset` (and
+  `asset_metadata`, and the Auditor's copies) in the underlying database. Fail-fast detects this,
+  but up to `--concurrency` executions may already have committed by then.
+- If the run is interrupted (Ctrl-C) or fail-fasts, read the summary: it reports
+  `expected-failure / unexpected-success / unexpected-error / not-started` per workload, and warns
+  when the four do not add up to the planned count. Only `expected-failure × K` assets were
+  actually seeded, and with `--concurrency > 1` the touched subset is not a contiguous prefix.
