@@ -8,12 +8,17 @@ public class YcsbCommon {
   static final String CONTRACT_CONFIG_NAME = "contract";
   static final String LOAD_CONCURRENCY = "load_concurrency";
   static final String LOAD_BATCH_SIZE = "load_batch_size";
+  static final String LOAD_MAX_RETRIES = "load_max_retries";
+  static final String LOAD_FAILED_RANGES_FILE = "load_failed_ranges_file";
+  static final String LOAD_RETRY_FILE = "load_retry_file";
   static final String RECORD_COUNT = "record_count";
   static final String PAYLOAD_SIZE = "payload_size";
   static final String OPS_PER_TX = "ops_per_tx";
   static final String WORKLOAD = "workload";
   static final long DEFAULT_LOAD_CONCURRENCY = 1;
   static final long DEFAULT_LOAD_BATCH_SIZE = 1;
+  static final long DEFAULT_LOAD_MAX_RETRIES = 5;
+  static final String DEFAULT_LOAD_FAILED_RANGES_FILE = "ycsb-load-failed-ranges.json";
   static final long DEFAULT_RECORD_COUNT = 1000;
   static final long DEFAULT_PAYLOAD_SIZE = 1000;
   static final long DEFAULT_OPS_PER_TX = 2;
@@ -59,6 +64,20 @@ public class YcsbCommon {
 
   public static int getLoadBatchSize(Config config) {
     return (int) config.getUserLong(CONFIG_NAME, LOAD_BATCH_SIZE, DEFAULT_LOAD_BATCH_SIZE);
+  }
+
+  public static int getLoadMaxRetries(Config config) {
+    return (int) config.getUserLong(CONFIG_NAME, LOAD_MAX_RETRIES, DEFAULT_LOAD_MAX_RETRIES);
+  }
+
+  public static String getLoadFailedRangesFile(Config config) {
+    return config.getUserString(
+        CONFIG_NAME, LOAD_FAILED_RANGES_FILE, DEFAULT_LOAD_FAILED_RANGES_FILE);
+  }
+
+  /** The failed-ranges file to resume from, or an empty string for a normal full load. */
+  public static String getLoadRetryFile(Config config) {
+    return config.getUserString(CONFIG_NAME, LOAD_RETRY_FILE, "");
   }
 
   public static int getRecordCount(Config config) {
