@@ -45,14 +45,45 @@ Cosmos adapter performs all writes through this stored procedure, so commit-stat
 with 404 while reads, and writes to all other containers (prepare phase, auditor lock writes),
 keep working. The container and its data are untouched.
 
+The whole cycle is doable with `az`. Confirm the subscription first — `az` keeps a persistent
+default, which is exactly how a deletion lands on the wrong account — and back up the current
+body, which is the version-exact source for the restore:
+
 ```console
-az cosmosdb sql stored-procedure delete --account-name <ACCOUNT> --resource-group <RG> \
-  --database-name coordinator --container-name state --name mutate.js
+az account show --query "{name:name, id:id}" -o table
 ```
 
-To restore, call `DistributedStorageAdmin.repairCoordinatorTables()` (e.g., via ScalarDB Schema
-Loader's repair option) or re-create the stored procedure from
-[`cosmosdb_stored_procedure/mutate.js`](https://github.com/scalar-labs/scalardb/blob/master/core/src/main/resources/cosmosdb_stored_procedure/mutate.js).
+```console
+az cosmosdb sql stored-procedure show -g <RG> -a <ACCOUNT> \
+  -d coordinator -c state -n mutate.js --query resource.body -o json | jq -r . > mutate.js
+```
+
+```console
+az cosmosdb sql stored-procedure delete -g <RG> -a <ACCOUNT> \
+  -d coordinator -c state -n mutate.js
+```
+
+To restore, re-create it from the file saved above (`--body` accepts `@<file>`; the procedure name
+must stay `mutate.js`, which is what the adapter looks up):
+
+```console
+az cosmosdb sql stored-procedure create -g <RG> -a <ACCOUNT> \
+  -d coordinator -c state -n mutate.js --body @mutate.js
+```
+
+```console
+az cosmosdb sql stored-procedure list -g <RG> -a <ACCOUNT> -d coordinator -c state -o table
+```
+
+Alternatively, `DistributedTransactionAdmin.repairCoordinatorTables()` (e.g., via ScalarDB Schema
+Loader's `--repair-all`) re-creates it too: repair recreates the container with
+`ifNotExists`, which adds the stored procedure back when it is missing. Its body then comes from
+the `mutate.js` bundled in the ScalarDB version running the repair, so prefer this route when you
+did not take the backup above, and prefer the backup when the ScalarDB version on hand may differ
+from the one that created the container.
+
+The database name follows the configured coordinator namespace, so adjust `-d coordinator` if the
+deployment overrides it.
 
 ### JDBC databases (MySQL / PostgreSQL) — for rehearsal
 
