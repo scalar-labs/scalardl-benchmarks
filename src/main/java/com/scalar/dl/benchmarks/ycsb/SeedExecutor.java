@@ -109,6 +109,7 @@ public class SeedExecutor {
   private static final ObjectMapper MAPPER = new ObjectMapper();
   private static final int PAYLOAD_SIZE = 100;
   private static final int PROGRESS_INTERVAL = 1000;
+  private static final long AWAIT_INTERVAL_SECONDS = 10;
 
   private final ContractRunner runner;
   private final int concurrency;
@@ -163,8 +164,12 @@ public class SeedExecutor {
       }
     } finally {
       pool.shutdown();
-      while (!pool.awaitTermination(10, TimeUnit.SECONDS)) {
-        logger.info("waiting for in-flight executions to drain...");
+      while (!pool.awaitTermination(AWAIT_INTERVAL_SECONDS, TimeUnit.SECONDS)) {
+        // Only report draining once a stop was actually requested: this loop also runs for the
+        // whole of a healthy run, where "draining" would just look like a stall.
+        if (stopped.get()) {
+          logger.info("waiting for in-flight executions to drain...");
+        }
       }
     }
     return new WorkloadResult(
