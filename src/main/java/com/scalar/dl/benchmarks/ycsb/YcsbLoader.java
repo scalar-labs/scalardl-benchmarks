@@ -18,10 +18,15 @@ import com.scalar.kelpie.exception.PreProcessException;
 import com.scalar.kelpie.modules.PreProcessor;
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.Queue;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadLocalRandom;
@@ -180,20 +185,14 @@ public class YcsbLoader extends PreProcessor {
   }
 
   private void loadRecords() {
-    List<Range> batches = planBatches();
-    if (batches.isEmpty()) {
+    BatchPlan plan = planBatches();
+    if (plan.batchCount() == 0) {
       logInfo("nothing to load");
       return;
     }
-    long plannedRecords = 0;
-    for (Range batch : batches) {
-      plannedRecords += batch.size();
-    }
+    long plannedRecords = plan.recordCount();
 
-    AtomicInteger cursor = new AtomicInteger(0);
-    // Written by exactly one worker per index and read only after join(), so no synchronization is
-    // needed. A boxed Set would cost ~50 bytes per batch, which matters at 10^7 batches and above.
-    boolean[] succeeded = new boolean[batches.size()];
+    AtomicLong cursor = new AtomicLong(0);
     LoadState state = new LoadState();
     AtomicBoolean workersDone = new AtomicBoolean(false);
 
@@ -201,8 +200,7 @@ public class YcsbLoader extends PreProcessor {
     try {
       List<CompletableFuture<Void>> workers = new ArrayList<>();
       for (int i = 0; i < concurrency; i++) {
-        workers.add(
-            CompletableFuture.runAsync(() -> runWorker(batches, cursor, succeeded, state), executor));
+        workers.add(CompletableFuture.runAsync(() -> runWorker(plan, cursor, state), executor));
       }
       long totalRecords = plannedRecords;
       CompletableFuture<Void> monitor =
@@ -244,12 +242,9 @@ public class YcsbLoader extends PreProcessor {
       throw new PreProcessException(summary, state.fatal.get());
     }
 
-    List<Range> failed = new ArrayList<>();
-    for (int i = 0; i < batches.size(); i++) {
-      if (!succeeded[i]) {
-        failed.add(batches.get(i));
-      }
-    }
+    // Without an abort, the worker loop ran to completion, so every batch either succeeded or was
+    // recorded here; the not-loaded set is exactly what the workers collected.
+    List<Range> failed = coalesce(state.failedBatches);
     if (failed.isEmpty()) {
       logInfo("all records have been inserted");
       return;
@@ -281,11 +276,88 @@ public class YcsbLoader extends PreProcessor {
     private final AtomicLong failedRecords = new AtomicLong();
     private final AtomicReference<String> abortReason = new AtomicReference<>();
     private final AtomicReference<Throwable> fatal = new AtomicReference<>();
+    // Only the batches that could not be loaded are kept. The circuit breaker bounds how many
+    // there can be, whereas materializing every batch would cost ~30 bytes each: 3 GB at 10^8
+    // batches, which is the default shape of a large load (load_batch_size defaults to 1).
+    private final Queue<Range> failedBatches = new ConcurrentLinkedQueue<>();
   }
 
-  private List<Range> planBatches() {
+  /**
+   * The batches to load, derived arithmetically instead of being materialized. Batch {@code i} of
+   * source range {@code k} covers {@code [start + (i - offset) * batchSize, ...)}, so the plan only
+   * needs the source ranges: one for a full load, or one per recorded range when resuming.
+   */
+  static final class BatchPlan {
+    private final List<Range> sources;
+    private final long[] offsets; // offsets[k] = number of batches before sources[k]
+    private final int batchSize;
+    private final long records;
+
+    private BatchPlan(List<Range> sources, long[] offsets, int batchSize, long records) {
+      this.sources = sources;
+      this.offsets = offsets;
+      this.batchSize = batchSize;
+      this.records = records;
+    }
+
+    static BatchPlan of(List<Range> sources, int batchSize) {
+      if (batchSize < 1) {
+        throw new IllegalArgumentException("batchSize must be >= 1, but was " + batchSize);
+      }
+      long[] offsets = new long[sources.size() + 1];
+      long records = 0;
+      for (int k = 0; k < sources.size(); k++) {
+        Range source = sources.get(k);
+        long batches = (source.size() + batchSize - 1L) / batchSize;
+        offsets[k + 1] = offsets[k] + batches;
+        records += source.size();
+      }
+      return BatchPlan.of(sources, offsets, batchSize, records);
+    }
+
+    private static BatchPlan of(
+        List<Range> sources, long[] offsets, int batchSize, long records) {
+      return new BatchPlan(Collections.unmodifiableList(new ArrayList<>(sources)), offsets,
+          batchSize, records);
+    }
+
+    long batchCount() {
+      return offsets[offsets.length - 1];
+    }
+
+    long recordCount() {
+      return records;
+    }
+
+    Range batchAt(long index) {
+      if (index < 0 || index >= batchCount()) {
+        throw new IndexOutOfBoundsException("no batch at " + index);
+      }
+      int k = sourceIndexOf(index);
+      Range source = sources.get(k);
+      long start = source.getStart() + (index - offsets[k]) * batchSize;
+      return new Range((int) start, (int) Math.min(start + batchSize, source.getEnd()));
+    }
+
+    /** The source range that batch {@code index} belongs to, by binary search over the offsets. */
+    private int sourceIndexOf(long index) {
+      int low = 0;
+      int high = sources.size() - 1;
+      while (low < high) {
+        int mid = (low + high + 1) >>> 1;
+        if (offsets[mid] <= index) {
+          low = mid;
+        } else {
+          high = mid - 1;
+        }
+      }
+      return low;
+    }
+  }
+
+  private BatchPlan planBatches() {
     if (retryFile.isEmpty()) {
-      return splitIntoBatches(new Range(0, recordCount), batchSize);
+      return BatchPlan.of(Collections.singletonList(new Range(0, recordCount)), batchSize);
     }
     YcsbLoadFailedRanges failedRanges = YcsbLoadFailedRanges.read(new File(retryFile));
     if (failedRanges.getRecordCount() != recordCount) {
@@ -311,19 +383,27 @@ public class YcsbLoader extends PreProcessor {
             + " ranges ("
             + failedRanges.totalRecords()
             + " records)");
-    List<Range> batches = new ArrayList<>();
-    for (Range range : failedRanges.getRanges()) {
-      batches.addAll(splitIntoBatches(range, batchSize));
-    }
-    return batches;
+    return BatchPlan.of(failedRanges.getRanges(), batchSize);
   }
 
-  static List<Range> splitIntoBatches(Range range, int batchSize) {
-    List<Range> batches = new ArrayList<>();
-    for (int start = range.getStart(); start < range.getEnd(); start += batchSize) {
-      batches.add(new Range(start, Math.min(start + batchSize, range.getEnd())));
+  /**
+   * Merges the recorded batches into as few ranges as possible. With the default batch size of 1 a
+   * throttled window produces one entry per record, and consecutive records fail together, so
+   * merging keeps both the file and the memory needed to write it small.
+   */
+  static List<Range> coalesce(Collection<Range> batches) {
+    List<Range> sorted = new ArrayList<>(batches);
+    sorted.sort(Comparator.comparingInt(Range::getStart));
+    List<Range> merged = new ArrayList<>();
+    for (Range batch : sorted) {
+      int last = merged.size() - 1;
+      if (last >= 0 && merged.get(last).getEnd() == batch.getStart()) {
+        merged.set(last, new Range(merged.get(last).getStart(), batch.getEnd()));
+      } else {
+        merged.add(batch);
+      }
     }
-    return batches;
+    return merged;
   }
 
   static boolean isRetriable(StatusCode code) {
@@ -337,23 +417,21 @@ public class YcsbLoader extends PreProcessor {
     return backoff / 2 + random.nextLong(backoff / 2 + 1);
   }
 
-  private void runWorker(
-      List<Range> batches, AtomicInteger cursor, boolean[] succeeded, LoadState state) {
+  private void runWorker(BatchPlan plan, AtomicLong cursor, LoadState state) {
     char[] payload = new char[payloadSize];
-    int index;
-    while ((index = cursor.getAndIncrement()) < batches.size()) {
+    long index;
+    while ((index = cursor.getAndIncrement()) < plan.batchCount()) {
       if (state.abortReason.get() != null) {
         return;
       }
-      Range batch = batches.get(index);
+      Range batch = plan.batchAt(index);
       try {
         if (loadBatchWithRetry(batch, payload)) {
-          succeeded[index] = true;
           counter.getAndAdd(batch.size());
           state.consecutiveFailures.set(0);
         } else {
-          // Retries exhausted. The batch stays out of `succeeded` and thus ends up in the
-          // failed-ranges file, while the other batches keep loading.
+          // Retries exhausted. The batch is recorded for the failed-ranges file, while the other
+          // batches keep loading.
           recordBatchFailure(batch, state);
         }
       } catch (Throwable t) {
@@ -377,6 +455,7 @@ public class YcsbLoader extends PreProcessor {
    * resource bound that keeps the failed-ranges file from growing without limit.
    */
   private void recordBatchFailure(Range batch, LoadState state) {
+    state.failedBatches.add(batch);
     long records = state.failedRecords.addAndGet(batch.size());
     int consecutive = state.consecutiveFailures.incrementAndGet();
     if (consecutive >= maxConsecutiveFailures) {
