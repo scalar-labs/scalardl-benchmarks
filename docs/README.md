@@ -111,3 +111,6 @@ Set up the above components and then properly configure Client, Ledger and Audit
 | `workload`         | Workload type (A, C or F).                         | A       |
 | `load_concurrency` | Number of threads for loading.                     | 1       |
 | `load_batch_size`  | Number of records in a single loading transaction. | 1       |
+| `load_max_retries` | Maximum number of retries per loading transaction for transient errors. | 5 |
+| `load_failed_ranges_file` | File to which the record-ID ranges that could not be loaded are written when the load fails. | ycsb-load-failed-ranges.json |
+| `load_retry_file`  | When set, only the record-ID ranges recorded in this file are loaded (to resume a failed load). | (none) |
