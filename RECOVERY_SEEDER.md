@@ -46,16 +46,10 @@ with 404 while reads, and writes to all other containers (prepare phase, auditor
 keep working. The container and its data are untouched.
 
 The whole cycle is doable with `az`. Confirm the subscription first — `az` keeps a persistent
-default, which is exactly how a deletion lands on the wrong account — and back up the current
-body, which is the version-exact source for the restore:
+default, which is exactly how a deletion lands on the wrong account:
 
 ```console
 az account show --query "{name:name, id:id}" -o table
-```
-
-```console
-az cosmosdb sql stored-procedure show -g <RG> -a <ACCOUNT> \
-  -d coordinator -c state -n mutate.js --query resource.body -o json | jq -r . > mutate.js
 ```
 
 ```console
@@ -63,8 +57,17 @@ az cosmosdb sql stored-procedure delete -g <RG> -a <ACCOUNT> \
   -d coordinator -c state -n mutate.js
 ```
 
-To restore, re-create it from the file saved above (`--body` accepts `@<file>`; the procedure name
-must stay `mutate.js`, which is what the adapter looks up):
+To restore, put the stored procedure body in a local file and pass its path to `--body` (which
+accepts `@<file>`). The procedure name must stay `mutate.js`, which is what the adapter looks up.
+Take the body from either source:
+
+- the ScalarDB jar the deployment runs, which is version-exact:
+  `unzip -p scalardb-<VERSION>.jar cosmosdb_stored_procedure/mutate.js > mutate.js`
+- [the file in the scalardb repository](https://github.com/scalar-labs/scalardb/blob/master/core/src/main/resources/cosmosdb_stored_procedure/mutate.js)
+  (pick the matching tag if you want to be strict)
+
+In practice the two agree: `mutate.js` has been touched by four commits in total and has not
+changed since February 2022, and the copy in a 3.19 jar is byte-identical to the one on master.
 
 ```console
 az cosmosdb sql stored-procedure create -g <RG> -a <ACCOUNT> \
@@ -76,11 +79,9 @@ az cosmosdb sql stored-procedure list -g <RG> -a <ACCOUNT> -d coordinator -c sta
 ```
 
 Alternatively, `DistributedTransactionAdmin.repairCoordinatorTables()` (e.g., via ScalarDB Schema
-Loader's `--repair-all`) re-creates it too: repair recreates the container with
-`ifNotExists`, which adds the stored procedure back when it is missing. Its body then comes from
-the `mutate.js` bundled in the ScalarDB version running the repair, so prefer this route when you
-did not take the backup above, and prefer the backup when the ScalarDB version on hand may differ
-from the one that created the container.
+Loader's `--repair-all`) re-creates it too: repair recreates the container with `ifNotExists`,
+which adds the stored procedure back when it is missing, using the `mutate.js` bundled in the
+ScalarDB version running the repair.
 
 The database name follows the configured coordinator namespace, so adjust `-d coordinator` if the
 deployment overrides it.
