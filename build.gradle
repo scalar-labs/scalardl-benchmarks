@@ -23,9 +23,24 @@ java {
     }
 }
 
+// The application plugin generates a launch script only for its single mainClass, so every further
+// command needs its own CreateStartScripts task, added to the distribution's bin directory below.
+def randomExecutorStartScripts = tasks.register('randomExecutorStartScripts', CreateStartScripts) {
+    mainClass = 'com.scalar.dl.benchmarks.ycsb.RandomTrafficRunner'
+    applicationName = 'random-executor'
+    // Not under build/scripts: the application plugin copies that whole directory into the
+    // distribution's bin, so a subdirectory of it would land there too.
+    outputDir = layout.buildDirectory.dir('randomExecutorScripts').get().asFile
+    classpath = files(tasks.named('jar')) + configurations.runtimeClasspath
+}
+
 application {
     mainClass = 'com.scalar.dl.benchmarks.ycsb.RecoveryStateSeeder'
     applicationName = 'recovery-seeder'
+    applicationDistribution.into('bin') {
+        from(randomExecutorStartScripts)
+        filePermissions { unix(0755) }
+    }
 }
 
 // The application plugin derives the main distribution name from applicationName, which would
