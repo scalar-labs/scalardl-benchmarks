@@ -129,12 +129,18 @@ workload); `2` = option/validation error (nothing was executed).
 1. **Restore the Coordinator** (see above). The cleanup tools themselves commit transactions, so
    they need a working Coordinator.
 2. Wait 15+ seconds so the PREPARED records pass the recovery-expiration window.
-3. Run the cleanup tools and verify against the counts printed in the seeder summary.
+3. Run the cleanup tools and verify against the counts printed in the seeder summary. Keep the key
+   space idle while doing so — no other client, benchmark or
+   [`random-executor`](RANDOM_EXECUTOR.md) run (see the first caveat).
 
 ## Caveats
 
 - **Do not read the seeded assets** (contracts, validation, etc.) before running the cleanup
-  tools: lazy recovery would resolve them and break the counts.
+  tools: lazy recovery would resolve them and break the counts. Verify the counts on an otherwise
+  idle key space, with no other client running — including
+  [`random-executor`](RANDOM_EXECUTOR.md), which draws keys uniformly from the whole space and so
+  eventually reads the seeded assets. Exercising the cleanup tools under concurrent traffic is a
+  separate run: `random-executor` with no seeding at all, where there are no exact counts to lose.
 - **Do not re-run the seeder after a partial failure** with the same parameters: keys are
   deterministic, so the run would hit already-seeded assets and corrupt the counts (lazy-recovery
   interference, shared read-lock counts, write-lock conflicts). Resolve all seeded states with
