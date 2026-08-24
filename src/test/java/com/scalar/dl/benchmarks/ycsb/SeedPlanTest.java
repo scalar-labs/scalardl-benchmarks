@@ -129,6 +129,76 @@ public class SeedPlanTest {
   }
 
   @Test
+  public void executionsFor_skipGiven_shouldResumeExactlyWhereTheRunStopped() {
+    // Arrange: the same plan, once whole and once resumed after 3 executions
+    SeedPlan whole = SeedPlan.of(BOTH, 10, 100, 1);
+    SeedPlan resumed = SeedPlan.of(BOTH, 10, 100, 1, 3);
+
+    // Act
+    List<Execution> executions = resumed.executionsFor(Workload.F);
+
+    // Assert: the tail of the original sequence, keys and indices unchanged, nothing re-seeded
+    List<Execution> original = whole.executionsFor(Workload.F);
+    assertThat(executions).hasSize(7);
+    for (int i = 0; i < executions.size(); i++) {
+      assertThat(executions.get(i).getIndex()).isEqualTo(original.get(i + 3).getIndex());
+      assertThat(executions.get(i).getUserIds()).isEqualTo(original.get(i + 3).getUserIds());
+    }
+    // and the skipped keys are the ones the interrupted run already seeded
+    assertThat(allKeys(resumed, Workload.F))
+        .doesNotContainAnyElementsOf(allKeys(whole, Workload.F).subList(0, 3));
+    assertThat(resumed.getSkippedExecutions(Workload.F)).isEqualTo(3);
+    assertThat(resumed.getSkippedExecutions(Workload.C)).isZero();
+  }
+
+  @Test
+  public void executionsFor_skipSpanningWorkloads_shouldCarryTheRemainderIntoTheNext() {
+    // Arrange: F has 10 executions, so a skip of 12 covers F entirely plus 2 of C
+    SeedPlan resumed = SeedPlan.of(BOTH, 10, 100, 1, 12);
+
+    // Act, Assert
+    assertThat(resumed.executionsFor(Workload.F)).isEmpty();
+    assertThat(resumed.getSkippedExecutions(Workload.F)).isEqualTo(10);
+    assertThat(resumed.executionsFor(Workload.C)).hasSize(8);
+    assertThat(resumed.getSkippedExecutions(Workload.C)).isEqualTo(2);
+    assertThat(resumed.executionsFor(Workload.C).get(0).getIndex()).isEqualTo(2);
+    assertThat(resumed.executionsFor(Workload.C).get(0).getUserIds())
+        .isEqualTo(SeedPlan.of(BOTH, 10, 100, 1).executionsFor(Workload.C).get(2).getUserIds());
+  }
+
+  @Test
+  public void executionsFor_skipWithOpsPerTx_shouldSkipWholeExecutions() {
+    // Arrange: K=2, so 10 assets are 5 executions per workload and a skip of 2 drops 4 assets
+    SeedPlan resumed = SeedPlan.of(BOTH, 10, 100, 2, 2);
+
+    // Act, Assert
+    assertThat(resumed.executionsFor(Workload.F)).hasSize(3);
+    assertThat(allKeys(resumed, Workload.F)).hasSize(6);
+    assertThat(resumed.describeKeys(Workload.F)).startsWith("6 of [0, 100)");
+  }
+
+  @Test
+  public void describeKeys_skipGiven_shouldReportWhatIsLeftToSeed() {
+    // Arrange, Act, Assert
+    assertThat(SeedPlan.of(BOTH, 10, 100, 1, 3).describeKeys(Workload.F))
+        .isEqualTo(
+            "7 of [0, 100), uniformly distributed (stride 5, even slots, resuming after the "
+                + "first 3 executions)");
+  }
+
+  @Test
+  public void of_invalidSkipGiven_shouldThrowIllegalArgumentException() {
+    // Act, Assert
+    assertThatThrownBy(() -> SeedPlan.of(BOTH, 10, 100, 1, -1))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("--skip-executions");
+    // 20 executions in total, so skipping all of them leaves nothing to do
+    assertThatThrownBy(() -> SeedPlan.of(BOTH, 10, 100, 1, 20))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("leaves nothing to seed");
+  }
+
+  @Test
   public void of_invalidValuesGiven_shouldThrowIllegalArgumentException() {
     assertThatThrownBy(() -> SeedPlan.of(BOTH, 0, 100, 1))
         .isInstanceOf(IllegalArgumentException.class)

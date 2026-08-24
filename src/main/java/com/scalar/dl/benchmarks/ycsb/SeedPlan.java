@@ -50,16 +50,36 @@ public final class SeedPlan {
   private final long numAssets;
   private final long totalAssets;
   private final int opsPerTx;
+  private final long skipExecutions;
 
-  private SeedPlan(List<Workload> workloads, long numAssets, long totalAssets, int opsPerTx) {
+  private SeedPlan(
+      List<Workload> workloads,
+      long numAssets,
+      long totalAssets,
+      int opsPerTx,
+      long skipExecutions) {
     this.workloads = workloads;
     this.numAssets = numAssets;
     this.totalAssets = totalAssets;
     this.opsPerTx = opsPerTx;
+    this.skipExecutions = skipExecutions;
   }
 
   public static SeedPlan of(
       List<Workload> workloads, long numAssets, long totalAssets, int opsPerTx) {
+    return of(workloads, numAssets, totalAssets, opsPerTx, 0);
+  }
+
+  /**
+   * @param skipExecutions how many executions to drop from the front of the planned sequence, to
+   *     resume an interrupted run without seeding its assets a second time
+   */
+  public static SeedPlan of(
+      List<Workload> workloads,
+      long numAssets,
+      long totalAssets,
+      int opsPerTx,
+      long skipExecutions) {
     if (workloads.isEmpty()) {
       throw new IllegalArgumentException("at least one workload must be specified");
     }
@@ -101,8 +121,25 @@ public final class SeedPlan {
       throw new IllegalArgumentException(
           "the number of executions per workload (--num-assets / --ops-per-tx) is too large");
     }
+    if (skipExecutions < 0) {
+      throw new IllegalArgumentException(
+          "--skip-executions must be >= 0, but was " + skipExecutions);
+    }
+    long totalExecutions = numAssets / opsPerTx * workloads.size();
+    if (skipExecutions >= totalExecutions) {
+      throw new IllegalArgumentException(
+          "--skip-executions ("
+              + skipExecutions
+              + ") leaves nothing to seed; the plan has "
+              + totalExecutions
+              + " executions in total");
+    }
     return new SeedPlan(
-        Collections.unmodifiableList(new ArrayList<>(workloads)), numAssets, totalAssets, opsPerTx);
+        Collections.unmodifiableList(new ArrayList<>(workloads)),
+        numAssets,
+        totalAssets,
+        opsPerTx,
+        skipExecutions);
   }
 
   public List<Workload> getWorkloads() {
@@ -121,7 +158,37 @@ public final class SeedPlan {
     return opsPerTx;
   }
 
-  /** Returns the executions of the given workload, K consecutive own-slots per execution. */
+  public long getSkipExecutions() {
+    return skipExecutions;
+  }
+
+  /** How many leading executions of the given workload {@code --skip-executions} drops. */
+  public int getSkippedExecutions(Workload workload) {
+    int workloadIndex = workloads.indexOf(workload);
+    if (workloadIndex < 0) {
+      throw new IllegalArgumentException("workload " + workload + " is not part of this plan");
+    }
+    return skippedFor(workloadIndex);
+  }
+
+  /**
+   * The workloads run one after another, so the skip budget is spent on the earlier ones first: a
+   * skip that outlasts the first workload carries the remainder into the next.
+   */
+  private int skippedFor(int workloadIndex) {
+    int numExecutions = (int) (numAssets / opsPerTx);
+    long remaining = skipExecutions - (long) workloadIndex * numExecutions;
+    if (remaining <= 0) {
+      return 0;
+    }
+    return (int) Math.min(remaining, numExecutions);
+  }
+
+  /**
+   * Returns the executions of the given workload, K consecutive own-slots per execution, minus the
+   * ones {@code --skip-executions} drops. The dropped ones keep their place in the numbering, so an
+   * execution's index and keys are the same as they would have been in the interrupted run.
+   */
   public List<Execution> executionsFor(Workload workload) {
     int workloadIndex = workloads.indexOf(workload);
     if (workloadIndex < 0) {
@@ -130,8 +197,9 @@ public final class SeedPlan {
     int numWorkloads = workloads.size();
     long slots = numAssets * numWorkloads;
     int numExecutions = (int) (numAssets / opsPerTx);
-    List<Execution> executions = new ArrayList<>(numExecutions);
-    for (int i = 0; i < numExecutions; i++) {
+    int skipped = skippedFor(workloadIndex);
+    List<Execution> executions = new ArrayList<>(numExecutions - skipped);
+    for (int i = skipped; i < numExecutions; i++) {
       long[] userIds = new long[opsPerTx];
       for (int k = 0; k < opsPerTx; k++) {
         long ownSlot = (long) i * opsPerTx + k;
@@ -154,13 +222,15 @@ public final class SeedPlan {
     } else {
       slotDescription = workloads.indexOf(workload) == 0 ? "even slots" : "odd slots";
     }
-    return numAssets
+    int skipped = skippedFor(workloads.indexOf(workload));
+    return (numAssets - (long) skipped * opsPerTx)
         + " of [0, "
         + totalAssets
         + "), uniformly distributed (stride "
         + stride
         + ", "
         + slotDescription
+        + (skipped == 0 ? "" : ", resuming after the first " + skipped + " executions")
         + ")";
   }
 }

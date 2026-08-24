@@ -39,8 +39,9 @@ import picocli.CommandLine.Option;
           + "leaves 2 PREPARED records (asset + asset_metadata) and 1 auditor write lock per "
           + "asset; workload C leaves 1 auditor read lock per asset.",
       "NOTE: keys are assigned deterministically, so re-running with the same parameters after a "
-          + "partial failure corrupts the seeded counts. Restore the coordinator and run the "
-          + "cleanup tools to resolve all seeded states before seeding again."
+          + "partial failure seeds the same assets twice and corrupts the counts. Resume with "
+          + "--skip-executions instead, or resolve all seeded states with the cleanup tools "
+          + "before seeding again."
     })
 public class RecoveryStateSeeder implements Callable<Integer> {
 
@@ -104,6 +105,19 @@ public class RecoveryStateSeeder implements Callable<Integer> {
   private int concurrency;
 
   @Option(
+      names = "--skip-executions",
+      defaultValue = "0",
+      paramLabel = "<n>",
+      description =
+          "Resume an interrupted run: skip the first n executions of the planned sequence "
+              + "(workload F first, then C), which the previous run already seeded. Pass its "
+              + "planned minus not-started, summed over the workloads. Every other option must "
+              + "match that run, or the keys shift. Only exact if it used --concurrency 1, since "
+              + "only then are the executions it started a contiguous prefix "
+              + "(default: ${DEFAULT-VALUE}).")
+  private long skipExecutions;
+
+  @Option(
       names = "--contract-id-c",
       defaultValue = "C",
       paramLabel = "<id>",
@@ -139,7 +153,9 @@ public class RecoveryStateSeeder implements Callable<Integer> {
         throw new IllegalArgumentException(
             "--properties file does not exist or is not readable: " + properties);
       }
-      plan = SeedPlan.of(toWorkloads(workload), numAssets, totalAssets, opsPerTx);
+      plan =
+          SeedPlan.of(
+              toWorkloads(workload), numAssets, totalAssets, opsPerTx, skipExecutions);
       clientConfig = new ClientConfig(properties);
     } catch (IllegalArgumentException | IOException e) {
       System.err.println("Error: " + e.getMessage());
@@ -240,10 +256,22 @@ public class RecoveryStateSeeder implements Callable<Integer> {
   private void printSummary(
       SeedPlan plan, Map<Workload, WorkloadResult> results, boolean auditorEnabled) {
     System.out.println();
+    if (plan.getSkipExecutions() > 0) {
+      System.out.println(
+          "resumed run: the first "
+              + plan.getSkipExecutions()
+              + " executions of the plan were skipped, so everything below counts this run only; "
+              + "add it to what the interrupted run seeded");
+    }
     for (Workload w : plan.getWorkloads()) {
       WorkloadResult result = results.get(w);
       if (result == null) {
         System.out.println("workload " + w + ": not run (fail-fast or interruption)");
+        continue;
+      }
+      if (result.getPlanned() == 0 && plan.getSkippedExecutions(w) > 0) {
+        System.out.println(
+            "workload " + w + ": already seeded in full by the interrupted run; nothing to do");
         continue;
       }
       long seededAssets = result.getExpected() * plan.getOpsPerTx();

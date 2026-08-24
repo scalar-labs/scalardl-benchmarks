@@ -68,6 +68,22 @@ public class RecoveryStateSeederTest {
                 "--total-assets", "100",
                 "--concurrency", "0"))
         .isEqualTo(ExitCode.USAGE);
+    // Assert: a skip that leaves nothing to seed
+    assertThat(
+            execute(
+                "--properties", properties.toString(),
+                "--num-assets", "10",
+                "--total-assets", "100",
+                "--skip-executions", "20"))
+        .isEqualTo(ExitCode.USAGE);
+    // Assert: negative skip
+    assertThat(
+            execute(
+                "--properties", properties.toString(),
+                "--num-assets", "10",
+                "--total-assets", "100",
+                "--skip-executions", "-1"))
+        .isEqualTo(ExitCode.USAGE);
     // Assert: invalid workload value is rejected by picocli itself
     assertThat(
             execute(

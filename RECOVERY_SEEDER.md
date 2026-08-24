@@ -114,6 +114,7 @@ Restore it from the saved DDL afterwards. The failure path converges to the same
 | `--workload <C\|F\|BOTH>` | no | `BOTH` | `BOTH` seeds M assets with F (even key slots) and another M with C (odd key slots) |
 | `--ops-per-tx <K>` | no | `1` | Assets per contract execution; the K assets of one execution share one transaction ID. `M % K == 0` is required |
 | `--concurrency <n>` | no | `1` | Client threads |
+| `--skip-executions <n>` | no | `0` | Resume an interrupted run by skipping its first n executions; see [Resuming an interrupted run](#resuming-an-interrupted-run) |
 | `--contract-id-c` / `--contract-id-f` | no | `C` / `F` | Override when the loader registered the contracts under non-default IDs |
 
 Constraints: `M × (number of seeded workloads) ≤ N`. Keys are computed as
@@ -123,6 +124,41 @@ distributed; with `BOTH`, both workloads individually cover the whole key space.
 Exit codes: `0` = every execution failed as expected; `1` = fail-fast or interruption (the
 summary shows `expected-failure / unexpected-success / unexpected-error / not-started` per
 workload); `2` = option/validation error (nothing was executed).
+
+## Resuming an interrupted run
+
+An interrupted run leaves assets seeded that must not be seeded twice, so re-running from the
+start is not an option. `--skip-executions` resumes instead: it drops the first n executions of the
+planned sequence and leaves every remaining key exactly where it was, so the resumed run seeds only
+what the interrupted one did not reach.
+
+This is exact **only if the interrupted run used `--concurrency 1`**. Executions are submitted in
+order to a single-threaded pool, so the ones it started are a contiguous prefix. With more threads
+they are not, and there is no n that describes what was touched.
+
+1. Stop the run with **Ctrl-C, never `kill -9`** — the summary is the only record of how far it got.
+2. Read n off that summary: `planned` minus `not-started`, summed over the workloads. That is the
+   number of executions it *started*, which includes the one that failed if it fail-fasted, since
+   that one reached the target too. A workload the summary reports as `not run` contributes 0:
+   with `BOTH` the workloads run F first and then C, so a run interrupted during F never started C.
+3. Re-run with **every other option identical** and `--skip-executions n`. Changing `--num-assets`,
+   `--total-assets`, `--ops-per-tx` or `--workload` shifts the whole key set and the resumed run
+   would seed assets the first one already seeded.
+
+For example, a run interrupted during workload F that reported
+`10000 executions planned (K=1): expected-failure=3271, unexpected-success=0, unexpected-error=0,
+not-started=6729` resumes with `--skip-executions 3271`, and the summary of the resumed run says so:
+
+```
+resumed run: the first 3271 executions of the plan were skipped, so everything below counts this
+run only; add it to what the interrupted run seeded
+```
+
+The seeded totals are then the sum across the runs; the seeder cannot add them up for you.
+
+Raising `--concurrency` on the resumed run is fine and is the usual reason to resume, but note that
+it gives up the property above: if the resumed run is itself interrupted, it cannot be resumed
+again.
 
 ## After seeding
 
@@ -141,10 +177,11 @@ workload); `2` = option/validation error (nothing was executed).
   [`random-executor`](RANDOM_EXECUTOR.md), which draws keys uniformly from the whole space and so
   eventually reads the seeded assets. Exercising the cleanup tools under concurrent traffic is a
   separate run: `random-executor` with no seeding at all, where there are no exact counts to lose.
-- **Do not re-run the seeder after a partial failure** with the same parameters: keys are
-  deterministic, so the run would hit already-seeded assets and corrupt the counts (lazy-recovery
-  interference, shared read-lock counts, write-lock conflicts). Resolve all seeded states with
-  the cleanup tools first.
+- **Do not re-run the seeder after a partial failure** with the same parameters and no
+  `--skip-executions`: keys are deterministic, so the run would hit already-seeded assets and
+  corrupt the counts (lazy-recovery interference, shared read-lock counts, write-lock conflicts).
+  Either resume with [`--skip-executions`](#resuming-an-interrupted-run), or resolve all seeded
+  states with the cleanup tools first.
 - A genuine coordinator outage during seeding is indistinguishable from the injected fault (both
   are 501). Rehearse the fault-injection procedure in a small environment first; the seeder
   fail-fasts on an unexpected *success*, which is the signature of forgetting to break the
